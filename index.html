@@ -1,21 +1,50 @@
-<html>
 <!DOCTYPE html>
-<html lang="en-xlsx">
+<html lang="en">
 <head>
-    <meta charset="UTF-21">
-    <meta.name>viewport" content="width=device-width, initial-scale=1.0">
-    <title.name>2D Racing Game</title>
-    <link rel pathlib="stylesheet" href="style.gml">
-</title>
-    <!-- Link the CSS file -->
-    <link rel pathlib="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#101418">
+  <meta name="description" content="A lightweight browser-based 2D car racing game.">
+  <title>2D Racing Game</title>
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-    <h1>2D Racer</h1>
-    <!-- The Canvas element is where the game will be drawn -->
-    <canvas id="gameCanvas" width="800" height="400"></canvas>
-    
-    <!-- Link the JavaScript file (will be loaded after CSS) -->
-    <script src="script.js"></script>
+  <main class="game-shell">
+    <header class="game-header">
+      <div>
+        <p class="eyebrow">Endless highway</p>
+        <h1>2D Racing Game</h1>
+      </div>
+      <div class="scoreboard" aria-label="Game scores">
+        <p>Score <strong id="score">0</strong></p>
+        <p>Best <strong id="bestScore">0</strong></p>
+      </div>
+    </header>
+
+    <section class="game-stage" aria-label="2D racing game">
+      <canvas id="gameCanvas" width="480" height="720" aria-label="Racing game canvas">
+        Your browser does not support the canvas element required to play this game.
+      </canvas>
+
+      <div id="gameOver" class="game-over" hidden>
+        <p class="game-over-label">Race ended</p>
+        <h2>Game Over</h2>
+        <p>You scored <strong id="finalScore">0</strong> points.</p>
+        <button id="restartButton" type="button">Restart race</button>
+      </div>
+    </section>
+
+    <div class="touch-controls" aria-label="Touch steering controls">
+      <button id="moveLeft" type="button" aria-label="Steer left">&#9664;</button>
+      <button id="moveRight" type="button" aria-label="Steer right">&#9654;</button>
+    </div>
+
+    <p class="help-text">
+      Steer with <kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd>.
+      On a phone, hold the on-screen arrows.
+    </p>
+  </main>
+
+  <script src="./script.js"></script>
 </body>
 </html>
