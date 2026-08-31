@@ -25,6 +25,8 @@ const GAME_HEIGHT = canvas.height;
 const ROAD_LEFT = 52;
 const ROAD_RIGHT = GAME_WIDTH - 52;
 const LANE_COUNT = 3;
+const TRAFFIC_LANE_INSET = 8;
+const TRAFFIC_ROUTE_GAP = 24;
 const TRAFFIC_COLORS = ["#ffc857", "#3dd6d0", "#a78bfa", "#ff7b72", "#f8f9fa"];
 const keysPressed = {
   left: false,
@@ -97,9 +99,37 @@ function resetGame() {
   animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-function laneX(lane, carWidth) {
+function laneBounds(lane) {
   const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT;
-  return ROAD_LEFT + lane * laneWidth + (laneWidth - carWidth) / 2;
+  return {
+    left: ROAD_LEFT + lane * laneWidth,
+    right: ROAD_LEFT + (lane + 1) * laneWidth
+  };
+}
+
+function trafficX(lane, carWidth) {
+  const bounds = laneBounds(lane);
+  const minX = Math.max(ROAD_LEFT, bounds.left + TRAFFIC_LANE_INSET);
+  const maxX = Math.min(ROAD_RIGHT - carWidth, bounds.right - carWidth - TRAFFIC_LANE_INSET);
+
+  // Keeping a small shoulder inside the selected lane looks natural, while the
+  // full random range lets cars threaten positions over either lane divider.
+  return minX + Math.random() * (maxX - minX);
+}
+
+function wouldBlockRoad(candidate) {
+  const nearbyLanes = new Set([candidate.lane]);
+  const safeVerticalGap = candidate.height + player.height + TRAFFIC_ROUTE_GAP;
+
+  for (const car of traffic) {
+    if (Math.abs(car.y - candidate.y) < safeVerticalGap) {
+      nearbyLanes.add(car.lane);
+    }
+  }
+
+  // Never create a tightly packed row spanning all three lanes. At least one
+  // lane remains available long enough for the player to steer through it.
+  return nearbyLanes.size === LANE_COUNT;
 }
 
 function spawnTraffic() {
@@ -112,20 +142,22 @@ function spawnTraffic() {
   const lane = availableLanes[Math.floor(Math.random() * availableLanes.length)];
   const width = 50;
   const height = 84;
-  traffic.push({
+  const candidate = {
     lane,
-    x: laneX(lane, width),
+    x: trafficX(lane, width),
     y: -height - 10,
     width,
     height,
     speedFactor: 0.88 + Math.random() * 0.24,
     color: TRAFFIC_COLORS[Math.floor(Math.random() * TRAFFIC_COLORS.length)]
-  });
+  };
+
+  if (!wouldBlockRoad(candidate)) traffic.push(candidate);
 }
 
 function overlaps(a, b) {
-  const paddingX = 7;
-  const paddingY = 6;
+  const paddingX = 3;
+  const paddingY = 4;
   return a.x + paddingX < b.x + b.width - paddingX &&
     a.x + a.width - paddingX > b.x + paddingX &&
     a.y + paddingY < b.y + b.height - paddingY &&
