@@ -1,18 +1,214 @@
-/* style.gml */
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #0a0d10;
+  color: #f7f9fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    font。“Name”: Arial, sans-serif;
-    background-color: #111;
-    margin: 20px;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at top, rgb(39 53 62 / 70%), transparent 42rem),
+    #0a0d10;
+}
+
+button {
+  font: inherit;
+}
+
+.game-shell {
+  width: min(100%, 36rem);
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem max(1rem, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.65rem;
+}
+
+.game-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.eyebrow,
+.game-over-label {
+  margin: 0 0 0.15rem;
+  color: #58e88b;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 h1 {
-    color: #0.f2সাধারণ;
+  margin: 0;
+  font-size: clamp(1.25rem, 5vw, 1.8rem);
+  line-height: 1;
+}
+
+.scoreboard {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.scoreboard p {
+  min-width: 4.3rem;
+  margin: 0;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #41505a;
+  border-radius: 0.5rem;
+  background: rgb(8 12 15 / 75%);
+  color: #b8c2c8;
+  font-size: 0.72rem;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.scoreboard strong {
+  display: block;
+  color: #fff;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-stage {
+  position: relative;
+  width: min(100%, calc((100svh - 12rem) * 2 / 3));
+  min-width: 15rem;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 2px solid #70808a;
+  border-radius: 0.75rem;
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 45%);
 }
 
 #gameCanvas {
-    border: 2px solid #0f0; /* Green border for a racing feel */
-    background-color: #333; /* Dark background for the track area */
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  background: #25292c;
+  touch-action: none;
+}
+
+.game-over {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 2rem;
+  background: rgb(4 7 9 / 78%);
+  text-align: center;
+  backdrop-filter: blur(3px);
+}
+
+.game-over[hidden] {
+  display: none;
+}
+
+.game-over h2 {
+  margin: 0;
+  font-size: clamp(2rem, 10vw, 3.5rem);
+}
+
+.game-over p:not(.game-over-label) {
+  margin: 0.5rem 0 1.25rem;
+}
+
+#restartButton {
+  border: 0;
+  border-radius: 0.55rem;
+  padding: 0.8rem 1.2rem;
+  background: #58e88b;
+  color: #06150b;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+#restartButton:focus-visible,
+.touch-controls button:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+.touch-controls {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.touch-controls button {
+  width: min(42vw, 10rem);
+  min-height: 3.25rem;
+  border: 1px solid #60717b;
+  border-radius: 0.65rem;
+  background: #1c252a;
+  color: #fff;
+  font-size: 1.4rem;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-controls button:active,
+.touch-controls button.is-pressed {
+  background: #58e88b;
+  color: #06150b;
+}
+
+.help-text {
+  margin: 0;
+  color: #a9b4ba;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+kbd {
+  border: 1px solid #61717a;
+  border-radius: 0.25rem;
+  padding: 0.05rem 0.3rem;
+  background: #20292e;
+  color: #fff;
+  font-family: inherit;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .touch-controls {
+    display: none;
+  }
+}
+
+@media (max-height: 650px) and (orientation: landscape) {
+  .game-shell {
+    width: min(100%, 52rem);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .game-header,
+  .help-text {
+    grid-column: 1;
+  }
+
+  .game-stage {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    width: calc((100svh - 1.5rem) * 2 / 3);
+  }
 }
