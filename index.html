@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://checkout.razorpay.com; style-src 'self'; img-src 'self' data: https://*.razorpay.com; font-src 'self'; connect-src 'self' https://*.supabase.co https://*.razorpay.com; frame-src https://*.razorpay.com; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="theme-color" content="#101418">
-  <meta name="description" content="A lightweight browser-based 2D car racing game.">
+  <meta name="description" content="A lightweight browser-based 2D car racing game with optional pay-to-continue after a crash.">
   <title>2D Racing Game</title>
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -20,6 +20,7 @@
       <div class="scoreboard" aria-label="Game scores">
         <p>Score <strong id="score">0</strong></p>
         <p>Best <strong id="bestScore">0</strong></p>
+        <p>Crashes <strong id="crashCount">0</strong></p>
       </div>
     </header>
 
@@ -28,11 +29,17 @@
         Your browser does not support the canvas element required to play this game.
       </canvas>
 
-      <div id="gameOver" class="game-over" hidden>
-        <p class="game-over-label">Race ended</p>
-        <h2>Game Over</h2>
+      <div id="crashOverlay" class="game-over" hidden>
+        <p class="game-over-label">Crash <span id="crashNumber">1</span></p>
+        <h2>Car Crashed</h2>
         <p>You scored <strong id="finalScore">0</strong> points.</p>
-        <button id="restartButton" type="button">Restart race</button>
+        <p class="continue-price">Continue this run for <strong>₹<span id="continueAmount">9</span></strong></p>
+        <p class="payment-note">The price increases by ₹9 after each crash. Payment is optional; you can end the run and restart free.</p>
+        <p id="paymentStatus" class="payment-status" role="status" aria-live="polite"></p>
+        <div class="crash-actions">
+          <button id="payContinueButton" type="button">Pay ₹9 &amp; Continue</button>
+          <button id="restartButton" class="secondary-button" type="button">End run &amp; restart</button>
+        </div>
       </div>
     </section>
 
@@ -47,6 +54,7 @@
     </p>
   </main>
 
+  <script src="./payment-config.js"></script>
   <script src="./script.js"></script>
 </body>
 </html>
