@@ -1,0 +1,18 @@
+# Environment and secret files
+.env
+.env.*
+!.env.example
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local secret/config directories
+secrets/
+.private/
+
+# Common local tooling files
+.DS_Store
+node_modules/
