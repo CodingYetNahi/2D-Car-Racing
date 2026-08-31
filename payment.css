@@ -1,0 +1,71 @@
+.continue-price {
+  margin-bottom: 0.45rem !important;
+  font-size: 1.05rem;
+}
+
+.continue-price strong {
+  color: #58e88b;
+  font-size: 1.25em;
+}
+
+.payment-note {
+  max-width: 24rem;
+  margin: 0 auto 0.9rem !important;
+  color: #c4cdd2;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.payment-status {
+  min-height: 1.2em;
+  margin: 0 0 0.7rem !important;
+  color: #fff4a8;
+  font-size: 0.78rem;
+}
+
+.crash-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+#payContinueButton,
+.secondary-button {
+  border: 0;
+  border-radius: 0.55rem;
+  padding: 0.8rem 1.2rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+#payContinueButton {
+  background: #58e88b;
+  color: #06150b;
+}
+
+#payContinueButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.secondary-button {
+  border: 1px solid #60717b;
+  background: #1c252a;
+  color: #fff;
+}
+
+#payContinueButton:focus-visible,
+.secondary-button:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+@media (max-width: 420px) {
+  .scoreboard {
+    gap: 0.25rem;
+  }
+
+  .scoreboard p {
+    min-width: 3.75rem;
+    padding-inline: 0.35rem;
+  }
+}
