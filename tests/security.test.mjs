@@ -35,16 +35,20 @@ test("checkout asks for adult confirmation only after pass selection", async () 
   }
 });
 
-test("mobile layout prevents page drift and handles both orientations", async () => {
+test("game fills the first viewport while help and legal links stay below", async () => {
+  const html = await read("index.html");
   const css = await read("style.css");
   const paymentCss = await read("payment.css");
   const source = await read("script.js");
-  assert.match(css, /body\.game-page[\s\S]*overflow:\s*hidden/);
+  assert.match(css, /\.game-shell[\s\S]*height:\s*100dvh/);
+  assert.match(css, /\.game-shell[\s\S]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto/);
+  assert.match(css, /body\.game-page[\s\S]*overflow-y:\s*auto/);
   assert.match(css, /orientation:\s*landscape/);
   assert.match(css, /\.game-over[\s\S]*overflow-y:\s*auto/);
   assert.match(css, /\.game-stage[\s\S]*aspect-ratio:\s*2\s*\/\s*3/);
   assert.match(css, /#gameCanvas[\s\S]*height:\s*100%/);
-  assert.doesNotMatch(css, /\.game-stage\s*\{[^}]*max-height/s);
+  assert.match(css, /\.game-stage[\s\S]*height:\s*min\(100%, 52rem/);
+  assert.match(html, /<\/main>[\s\S]*class="below-game"[\s\S]*class="site-footer"/);
   assert.match(paymentCss, /\.age-dialog::backdrop/);
   assert.match(source, /opposing traffic travels down/);
 });
