@@ -149,3 +149,11 @@ test("repository does not contain obvious private-key or live-secret assignments
     assert.doesNotMatch(content, /(?:RAZORPAY_KEY_SECRET|SUPABASE_SERVICE_ROLE_KEY)\s*=\s*["'][^"']{8,}["']/);
   }
 });
+
+test("Pages retries use one artifact per workflow attempt", async () => {
+  const workflow = await read(".github/workflows/static.yml");
+  const attemptName = /github-pages-\$\{\{ github\.run_attempt \}\}/g;
+  assert.equal(workflow.match(attemptName)?.length, 2);
+  assert.match(workflow, /name:\s*github-pages-\$\{\{ github\.run_attempt \}\}/);
+  assert.match(workflow, /artifact_name:\s*github-pages-\$\{\{ github\.run_attempt \}\}/);
+});
