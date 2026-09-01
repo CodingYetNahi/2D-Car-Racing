@@ -1,7 +1,7 @@
 {
-  "name": "RacingGame.fun – Free 2D Car Racing Game",
+  "name": "RacingGame.fun – 2D Car Racing Game",
   "short_name": "RacingGame.fun",
-  "description": "A fast, free 2D car racing game for mobile and desktop browsers.",
+  "description": "A fast, 2D car racing game for mobile and desktop browsers.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
