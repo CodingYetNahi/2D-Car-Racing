@@ -40,7 +40,9 @@ test("game fills the first viewport while help and legal links stay below", asyn
   const css = await read("style.css");
   const paymentCss = await read("payment.css");
   const source = await read("script.js");
+  const gameShellRules = css.match(/\.game-shell\s*\{([^}]*)\}/)?.[1] ?? "";
   assert.match(css, /\.game-shell[\s\S]*height:\s*100dvh/);
+  assert.doesNotMatch(gameShellRules, /min-height/);
   assert.match(css, /\.game-shell[\s\S]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto/);
   assert.match(css, /body\.game-page[\s\S]*overflow-y:\s*auto/);
   assert.match(css, /orientation:\s*landscape/);

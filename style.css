@@ -36,7 +36,6 @@ button {
 .game-shell {
   width: min(100%, 36rem);
   height: 100dvh;
-  min-height: 32rem;
   margin: 0 auto;
   padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem max(1rem, env(safe-area-inset-bottom));
   display: grid;
