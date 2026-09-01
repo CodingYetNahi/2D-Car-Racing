@@ -1,51 +1,52 @@
-# Razorpay pay-to-continue setup
+# Razorpay fixed-pass setup
 
-The game uses a linear crash price: crash 1 = ₹9, crash 2 = ₹18, crash 3 = ₹27, and so on. A payment is never started automatically. The player must press the displayed **Pay ₹X & Continue** button after each crash.
+Payments are intentionally disabled. The prepared products are fixed, non-renewing access fees:
 
-## Security model
+- `day`: ₹29 for 24 hours
+- `week`: ₹99 for 168 hours
 
-- GitHub Pages contains only public frontend code.
-- `RAZORPAY_KEY_SECRET`, `SUPABASE_SERVICE_ROLE_KEY` and webhook secrets must never be committed to this repository.
-- The backend creates Razorpay Orders and calculates the amount from server-side crash state.
-- The browser cannot choose or reduce the amount.
-- The backend verifies `razorpay_signature` with HMAC-SHA256 and checks the Razorpay payment's order ID, amount, currency and capture status before the game resumes.
-- `localStorage` is used only for the best score; it is never proof of payment.
+They grant unlimited continues during the pass period. They never renew and provide no stake, prize, cash-out, transferable credit or redeemable reward.
 
-## Dedicated Supabase project required
+## Do not enable payments until
 
-Use a dedicated project for this game. Do not reuse an unrelated production database.
+1. The security and legal launch gates are closed.
+2. Indian gaming counsel confirms the model and any required Online Gaming Authority step is complete.
+3. Razorpay gives written approval for the exact non-money-game model.
+4. The operator legal name, business address, support email, grievance contact and GST treatment are published.
+5. The schema and Edge Function pass isolated Razorpay Test Mode testing.
 
-1. Run `supabase/payment-schema.sql` in the dedicated project's SQL editor.
-2. Deploy `supabase/functions/racing-payments` as an anonymous Edge Function (`verify_jwt = false`) because the game itself has no Supabase login. The function performs its own origin/input/payment validation.
-3. Add these Edge Function secrets in Supabase:
-   - `RAZORPAY_KEY_ID`
-   - `RAZORPAY_KEY_SECRET`
-4. Do not expose `SUPABASE_SERVICE_ROLE_KEY`; hosted Edge Functions receive it server-side.
-5. Set Razorpay payment capture to automatic, or update the backend to explicitly capture authorised payments before granting continuation.
-6. In `payment-config.js`, set:
+## Backend setup
 
-```js
-window.RACING_PAYMENT_API_BASE = "https://YOUR_PROJECT_REF.supabase.co/functions/v1/racing-payments";
-```
+1. Apply `supabase/payment-schema.sql` in the dedicated project.
+2. Deploy `supabase/functions/racing-payments` with JWT verification disabled. The function performs exact origin checks, opaque entitlement checks and rate limiting.
+3. Set server-managed secrets: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RATE_LIMIT_SECRET` (at least 32 random bytes), `MERCHANT_LEGAL_NAME`, and `SUPPORT_EMAIL`.
+4. Configure `.../racing-payments/webhook` for payment captured/failed and refund events.
+5. Leave `PAYMENTS_ENABLED` unset or `false` until every launch gate passes. Set it to `true` only for the final approved deployment.
+6. Set `window.RACING_PAYMENT_API_BASE` in `payment-config.js` to the deployed function base URL.
 
-7. Test with Razorpay Test Mode first. Confirm that ₹9 is charged for crash 1, ₹18 for crash 2, and ₹27 for crash 3, and that cancelling Checkout does not resume the run.
-8. Only after test-mode verification, add Live Mode keys as Supabase secrets and retest with a small real payment.
+No Razorpay secret, webhook secret, service-role key or rate-limit secret may appear in GitHub Pages, repository files or browser logs.
 
-## API contract
+## API flow
 
-### POST `/start-run`
-Creates an opaque server-side run and returns `{ runId }`.
+- `POST /start-run` creates a server run, subject to rate limits.
+- `POST /create-order` accepts only `day` or `week`, requires adult confirmation and the current Terms version, and calculates the price on the server.
+- `POST /verify-payment` verifies signature, order, amount, currency and captured state. It atomically creates a time-limited entitlement and returns a random bearer token.
+- `POST /check-pass` validates an entitlement without extending it.
+- `POST /authorize-continue` validates an active pass and records a continue atomically.
+- `POST /webhook` validates the raw-body signature and reconciles captured, failed and refunded payments. A refund revokes the pass.
 
-### POST `/create-order`
-Body: `{ runId }`.
+The browser stores only the opaque access token. The database stores only its SHA-256 hash. Never log the token, put it in a URL or share it.
 
-The server increments the crash count exactly once, computes `900 * crashNumber` paise and creates/reuses the pending Razorpay order. The client-supplied amount is never accepted.
+## Required tests
 
-### POST `/verify-payment`
-Body contains `runId`, `razorpay_payment_id`, `razorpay_order_id`, and `razorpay_signature`.
-
-The server verifies the signature and Razorpay payment details before returning `{ verified: true }`.
-
-## Before production
-
-Add webhook reconciliation for `payment.captured` and payment failures so delayed gateway events can repair state automatically. Also add rate limiting/abuse protection to the anonymous start-run and create-order endpoints before meaningful traffic is expected.
+- Payments fail closed while the enable flag or merchant/support details are missing.
+- Client-supplied amounts cannot alter ₹29 or ₹99.
+- Missing adult confirmation or an old Terms version is rejected.
+- Invalid origin/signature/order/amount/currency and uncaptured payments are rejected.
+- Repeated order creation reuses the pending order.
+- Repeated verification recovers the entitlement without extending expiry.
+- Expired, refunded, revoked and forged tokens are rejected.
+- Duplicate webhook events are harmless and a refund revokes access.
+- Rate limits return 429 without load testing.
+- Free restart works while payments are absent or unavailable.
+- Secret scanning remains clean.

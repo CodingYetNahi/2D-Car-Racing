@@ -1,5 +1,7 @@
 "use strict";
 
+import { ENTITLEMENT_STORAGE_KEY, PASS_PRODUCTS, TERMS_VERSION, getPassProduct } from "./payment-policy.js";
+
 const canvas = document.getElementById("gameCanvas");
 
 if (!(canvas instanceof HTMLCanvasElement)) {
@@ -15,9 +17,13 @@ const finalScoreElement = document.getElementById("finalScore");
 const crashOverlayElement = document.getElementById("crashOverlay");
 const crashCountElement = document.getElementById("crashCount");
 const crashNumberElement = document.getElementById("crashNumber");
-const continueAmountElement = document.getElementById("continueAmount");
 const paymentStatusElement = document.getElementById("paymentStatus");
-const payContinueButton = document.getElementById("payContinueButton");
+const passPurchasePanel = document.getElementById("passPurchasePanel");
+const activePassMessage = document.getElementById("activePassMessage");
+const adultConfirmation = document.getElementById("adultConfirmation");
+const dayPassButton = document.getElementById("dayPassButton");
+const weekPassButton = document.getElementById("weekPassButton");
+const usePassButton = document.getElementById("usePassButton");
 const restartButton = document.getElementById("restartButton");
 const leftButton = document.getElementById("moveLeft");
 const rightButton = document.getElementById("moveRight");
@@ -29,7 +35,6 @@ const ROAD_RIGHT = GAME_WIDTH - 52;
 const LANE_COUNT = 3;
 const TRAFFIC_LANE_INSET = 8;
 const TRAFFIC_ROUTE_GAP = 24;
-const BASE_CONTINUE_PRICE_RUPEES = 9;
 const PAYMENT_API_BASE = String(window.RACING_PAYMENT_API_BASE || "").replace(/\/$/, "");
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 const TRAFFIC_COLORS = ["#ffc857", "#3dd6d0", "#a78bfa", "#ff7b72", "#f8f9fa"];
@@ -60,6 +65,7 @@ let runId = null;
 let runStartPromise = null;
 let paymentInProgress = false;
 let razorpayLoadPromise = null;
+let activePass = null;
 
 function readBestScore() {
   try {
@@ -88,16 +94,38 @@ function setPaymentStatus(message) {
 
 function setPaymentBusy(isBusy) {
   paymentInProgress = isBusy;
-  if (payContinueButton) payContinueButton.disabled = isBusy;
+  if (dayPassButton) dayPassButton.disabled = isBusy || !PAYMENT_API_BASE;
+  if (weekPassButton) weekPassButton.disabled = isBusy || !PAYMENT_API_BASE;
+  if (usePassButton) usePassButton.disabled = isBusy;
   if (restartButton) restartButton.disabled = isBusy;
 }
 
-async function paymentApi(path, payload) {
+function readAccessToken() {
+  try {
+    return localStorage.getItem(ENTITLEMENT_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function saveAccessToken(token) {
+  try {
+    if (token) localStorage.setItem(ENTITLEMENT_STORAGE_KEY, token);
+    else localStorage.removeItem(ENTITLEMENT_STORAGE_KEY);
+  } catch {
+    // Storage can be blocked. The entitlement then lasts only for this page session.
+  }
+}
+
+async function paymentApi(path, payload, accessToken = "") {
   if (!PAYMENT_API_BASE) throw new Error("Payment backend is not configured yet.");
 
   const response = await fetch(`${PAYMENT_API_BASE}/${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(accessToken ? { "Authorization": `Bearer ${accessToken}` } : {})
+    },
     body: JSON.stringify(payload || {})
   });
 
@@ -113,6 +141,37 @@ async function paymentApi(path, payload) {
   }
 
   return body;
+}
+
+function renderPassState() {
+  const hasActivePass = Boolean(activePass?.active && activePass?.expiresAt);
+  if (passPurchasePanel) passPurchasePanel.hidden = hasActivePass;
+  if (usePassButton) usePassButton.hidden = !hasActivePass;
+  if (activePassMessage) {
+    activePassMessage.hidden = !hasActivePass;
+    activePassMessage.textContent = hasActivePass
+      ? `${activePass.productName} active until ${new Date(activePass.expiresAt).toLocaleString()}.`
+      : "";
+  }
+}
+
+async function refreshPassState() {
+  const token = readAccessToken();
+  if (!token || !PAYMENT_API_BASE) {
+    activePass = null;
+    renderPassState();
+    return null;
+  }
+
+  try {
+    const result = await paymentApi("check-pass", {}, token);
+    activePass = result?.active ? result : null;
+    if (!activePass) saveAccessToken("");
+  } catch {
+    activePass = null;
+  }
+  renderPassState();
+  return activePass;
 }
 
 function startServerRun() {
@@ -165,6 +224,7 @@ function resetGame() {
   setPaymentStatus("");
   if (crashOverlayElement) crashOverlayElement.hidden = true;
   setPaymentBusy(false);
+  void refreshPassState();
   startServerRun();
   running = true;
   lastTime = performance.now();
@@ -327,16 +387,16 @@ function handleCrash() {
   saveBestScore();
 
   crashCount += 1;
-  const predictedAmount = BASE_CONTINUE_PRICE_RUPEES * crashCount;
   setText(bestScoreElement, bestScore);
   setText(finalScoreElement, score);
   setText(crashCountElement, crashCount);
   setText(crashNumberElement, crashCount);
-  setText(continueAmountElement, predictedAmount);
-  if (payContinueButton) payContinueButton.textContent = `Pay ₹${predictedAmount} & Continue`;
-  setPaymentStatus(PAYMENT_API_BASE ? "" : "Payments are not configured yet. End the run and restart.");
+  setPaymentStatus(PAYMENT_API_BASE ? "" : "Payments are not configured yet. Restart free.");
   if (crashOverlayElement) crashOverlayElement.hidden = false;
-  payContinueButton?.focus();
+  void refreshPassState().finally(() => {
+    if (activePass) usePassButton?.focus();
+    else restartButton?.focus();
+  });
 }
 
 function resumeAfterVerifiedPayment() {
@@ -369,30 +429,35 @@ function loadRazorpayCheckout() {
   return razorpayLoadPromise;
 }
 
-async function payAndContinue() {
+async function buyPass(productCode) {
   if (paymentInProgress) return;
+  const product = getPassProduct(productCode);
+  if (!product) return;
+
+  if (!(adultConfirmation instanceof HTMLInputElement) || !adultConfirmation.checked) {
+    setPaymentStatus("Only an adult aged 18 or older may buy a pass. Ask a parent or guardian to make the purchase.");
+    adultConfirmation?.focus();
+    return;
+  }
+
   setPaymentBusy(true);
   setPaymentStatus("Preparing secure payment…");
 
   try {
     const activeRunId = await ensureRunId();
-    const order = await paymentApi("create-order", { runId: activeRunId });
+    const order = await paymentApi("create-order", {
+      runId: activeRunId,
+      productCode,
+      adultConfirmed: true,
+      termsVersion: TERMS_VERSION
+    });
 
-    if (!order?.orderId || !order?.keyId || !Number.isInteger(order?.amountPaise) || order.amountPaise < 100) {
+    if (!order?.orderId || !order?.keyId || !Number.isInteger(order?.amountPaise)) {
       throw new Error("Payment service returned an invalid order.");
     }
-
-    const authoritativeCrashNumber = Number(order.crashNumber);
-    const authoritativeRupees = order.amountPaise / 100;
-    if (!Number.isInteger(authoritativeCrashNumber) || authoritativeCrashNumber < 1) {
-      throw new Error("Payment service returned an invalid crash number.");
+    if (order.productCode !== product.code || order.amountPaise !== product.amountPaise) {
+      throw new Error("Payment service returned an unexpected pass or price.");
     }
-
-    crashCount = authoritativeCrashNumber;
-    setText(crashCountElement, crashCount);
-    setText(crashNumberElement, crashCount);
-    setText(continueAmountElement, authoritativeRupees);
-    if (payContinueButton) payContinueButton.textContent = `Pay ₹${authoritativeRupees} & Continue`;
 
     await loadRazorpayCheckout();
     setPaymentStatus("");
@@ -402,7 +467,7 @@ async function payAndContinue() {
       amount: order.amountPaise,
       currency: order.currency || "INR",
       name: "2D Racing Game",
-      description: `Continue after crash ${crashCount}`,
+      description: `${product.name} · non-renewing access`,
       order_id: order.orderId,
       handler: async (response) => {
         setPaymentStatus("Verifying payment…");
@@ -414,7 +479,12 @@ async function payAndContinue() {
             razorpay_signature: response.razorpay_signature
           });
 
-          if (!verification?.verified) throw new Error("Payment verification failed.");
+          if (!verification?.verified || !verification?.accessToken || !verification?.expiresAt) {
+            throw new Error("Payment verification failed.");
+          }
+          saveAccessToken(verification.accessToken);
+          activePass = verification;
+          renderPassState();
           resumeAfterVerifiedPayment();
         } catch (error) {
           console.error("Payment verification error:", error);
@@ -424,7 +494,7 @@ async function payAndContinue() {
       },
       modal: {
         ondismiss: () => {
-          setPaymentStatus("Payment cancelled. No charge is made by cancelling Checkout.");
+          setPaymentStatus("Payment cancelled. Cancelling Checkout does not create a charge.");
           setPaymentBusy(false);
         }
       },
@@ -432,14 +502,35 @@ async function payAndContinue() {
     });
 
     checkout.on("payment.failed", () => {
-      setPaymentStatus("Payment failed. You have not been allowed to continue this run.");
+      setPaymentStatus("Payment failed. No pass was granted.");
       setPaymentBusy(false);
     });
-
     checkout.open();
   } catch (error) {
     console.error("Unable to start payment:", error);
     setPaymentStatus(error.message || "Payment service is unavailable.");
+    setPaymentBusy(false);
+  }
+}
+
+async function useActivePass() {
+  if (paymentInProgress) return;
+  setPaymentBusy(true);
+  setPaymentStatus("Checking pass…");
+  try {
+    const activeRunId = await ensureRunId();
+    const token = readAccessToken();
+    if (!token) throw new Error("No active pass was found.");
+    const authorization = await paymentApi("authorize-continue", { runId: activeRunId }, token);
+    if (!authorization?.authorized) throw new Error("This pass has expired or is not valid.");
+    activePass = authorization;
+    renderPassState();
+    resumeAfterVerifiedPayment();
+  } catch (error) {
+    saveAccessToken("");
+    activePass = null;
+    renderPassState();
+    setPaymentStatus(error.message || "The pass could not be checked. Restart free.");
     setPaymentBusy(false);
   }
 }
@@ -494,7 +585,9 @@ function bindTouchControl(button, direction) {
 
 bindTouchControl(leftButton, "left");
 bindTouchControl(rightButton, "right");
-payContinueButton?.addEventListener("click", payAndContinue);
+dayPassButton?.addEventListener("click", () => buyPass(PASS_PRODUCTS.day.code));
+weekPassButton?.addEventListener("click", () => buyPass(PASS_PRODUCTS.week.code));
+usePassButton?.addEventListener("click", useActivePass);
 restartButton?.addEventListener("click", resetGame);
 
 resetGame();

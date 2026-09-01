@@ -8,6 +8,70 @@
   font-size: 1.25em;
 }
 
+.pass-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0.65rem 0;
+}
+
+.pass-button,
+#usePassButton {
+  border: 2px solid #58e88b;
+  border-radius: 0.65rem;
+  background: #10271a;
+  color: #fff;
+  padding: 0.75rem;
+  cursor: pointer;
+}
+
+.pass-button strong,
+.pass-button span {
+  display: block;
+}
+
+.pass-button span {
+  margin-top: 0.2rem;
+  color: #b9f8cb;
+  font-size: 0.78rem;
+}
+
+.adult-confirmation {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  margin: 0.65rem auto;
+  max-width: 25rem;
+  text-align: left;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.adult-confirmation input {
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.08rem;
+  accent-color: #58e88b;
+}
+
+.active-pass {
+  color: #b9f8cb;
+  font-weight: 800;
+}
+
+.legal-links {
+  margin: 0 auto 0.75rem !important;
+  max-width: 25rem;
+  color: #c4cdd2;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.legal-links a,
+.site-footer a {
+  color: #b9f8cb;
+}
+
 .payment-note {
   max-width: 24rem;
   margin: 0 auto 0.9rem !important;
@@ -28,7 +92,7 @@
   gap: 0.55rem;
 }
 
-#payContinueButton,
+#usePassButton,
 .secondary-button {
   border: 0;
   border-radius: 0.55rem;
@@ -37,12 +101,13 @@
   cursor: pointer;
 }
 
-#payContinueButton {
+#usePassButton {
   background: #58e88b;
   color: #06150b;
 }
 
-#payContinueButton:disabled {
+.pass-button:disabled,
+#usePassButton:disabled {
   cursor: wait;
   opacity: 0.65;
 }
@@ -53,13 +118,26 @@
   color: #fff;
 }
 
-#payContinueButton:focus-visible,
+.pass-button:focus-visible,
+#usePassButton:focus-visible,
 .secondary-button:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 2px;
 }
 
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.85rem;
+  padding: 0.8rem 1rem 1.2rem;
+  font-size: 0.78rem;
+}
+
 @media (max-width: 420px) {
+  .pass-options {
+    grid-template-columns: 1fr;
+  }
   .scoreboard {
     gap: 0.25rem;
   }

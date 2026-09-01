@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://checkout.razorpay.com; style-src 'self'; img-src 'self' data: https://*.razorpay.com; font-src 'self'; connect-src 'self' https://*.supabase.co https://*.razorpay.com; frame-src https://*.razorpay.com; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="theme-color" content="#101418">
-  <meta name="description" content="A lightweight browser-based 2D car racing game with optional pay-to-continue after a crash.">
+  <meta name="description" content="A lightweight browser-based 2D car racing game with optional fixed-time access passes and a free restart.">
   <title>2D Racing Game</title>
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./payment.css">
@@ -34,12 +34,24 @@
         <p class="game-over-label">Crash <span id="crashNumber">1</span></p>
         <h2>Car Crashed</h2>
         <p>You scored <strong id="finalScore">0</strong> points.</p>
-        <p class="continue-price">Continue this run for <strong>₹<span id="continueAmount">9</span></strong></p>
-        <p class="payment-note">The price increases by ₹9 after each crash. Payment is optional; you can end the run and restart free.</p>
+        <p id="activePassMessage" class="active-pass" hidden></p>
+        <div id="passPurchasePanel">
+          <p class="continue-price">Choose a fixed, non-renewing pass</p>
+          <div class="pass-options" aria-label="Access pass options">
+            <button id="dayPassButton" class="pass-button" type="button"><strong>1 Day Pass</strong><span>₹29 · 24 hours</span></button>
+            <button id="weekPassButton" class="pass-button" type="button"><strong>1 Week Pass</strong><span>₹99 · 7 days</span></button>
+          </div>
+          <label class="adult-confirmation">
+            <input id="adultConfirmation" type="checkbox">
+            <span>I am 18 or older and I am making this purchase myself.</span>
+          </label>
+          <p class="payment-note">A pass gives unlimited continues for its stated time. It does not renew. There is no prize, cash-out, wager or redeemable reward. You can always restart free.</p>
+          <p class="legal-links">By buying, the adult purchaser accepts the <a href="./terms.html">Terms</a> and <a href="./refund.html">Refund Policy</a>. See our <a href="./privacy.html">Privacy Notice</a> and <a href="./parents.html">Parent Guide</a>.</p>
+        </div>
         <p id="paymentStatus" class="payment-status" role="status" aria-live="polite"></p>
         <div class="crash-actions">
-          <button id="payContinueButton" type="button">Pay ₹9 &amp; Continue</button>
-          <button id="restartButton" class="secondary-button" type="button">End run &amp; restart</button>
+          <button id="usePassButton" type="button" hidden>Use active pass &amp; continue</button>
+          <button id="restartButton" class="secondary-button" type="button">Restart free</button>
         </div>
       </div>
     </section>
@@ -55,7 +67,15 @@
     </p>
   </main>
 
+  <footer class="site-footer">
+    <a href="./terms.html">Terms</a>
+    <a href="./privacy.html">Privacy</a>
+    <a href="./refund.html">Refunds</a>
+    <a href="./parents.html">Parents</a>
+    <a href="./contact.html">Contact</a>
+  </footer>
+
   <script src="./payment-config.js"></script>
-  <script src="./script.js"></script>
+  <script type="module" src="./script.js"></script>
 </body>
 </html>
