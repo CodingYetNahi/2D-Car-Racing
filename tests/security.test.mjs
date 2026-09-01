@@ -93,13 +93,32 @@ test("payment service stays fail-closed and verifies server facts", async () => 
 });
 
 test("database objects deny browser roles and use RLS", async () => {
-  const schema = await read("supabase/payment-schema.sql");
-  for (const table of ["racing_payment_runs", "racing_payments", "racing_entitlements", "racing_rate_limits"]) {
-    assert.match(schema, new RegExp(`alter table public\\.${table} enable row level security`));
+  const schemas = [await read("supabase/payment-schema.sql"), await read("supabase/verified-schema.sql")];
+  for (const [schema, tables] of [
+    [schemas[0], ["racing_payment_runs", "racing_payments", "racing_entitlements", "racing_rate_limits"]],
+    [schemas[1], ["racing_verified_players", "racing_verified_runs", "racing_verified_scores", "racing_verification_rate_limits"]]
+  ]) {
+    for (const table of tables) {
+      assert.match(schema, new RegExp(`alter table public\\.${table} enable row level security`));
+    }
+    assert.match(schema, /revoke all .* from public, anon, authenticated/i);
+    assert.match(schema, /security invoker/);
+    assert.doesNotMatch(schema, /security definer/i);
   }
-  assert.match(schema, /revoke all .* from public, anon, authenticated/i);
-  assert.match(schema, /security invoker/);
-  assert.doesNotMatch(schema, /security definer/i);
+});
+
+test("official scores use signed, single-use, server-replayed runs", async () => {
+  const backend = await read("supabase/functions/verified-runs/index.ts");
+  const frontend = await read("script.js");
+  const engine = await read("supabase/functions/_shared/racing-engine.js");
+  assert.match(backend, /hmacHex/);
+  assert.match(backend, /safeEqual/);
+  assert.match(backend, /replayGame/);
+  assert.match(backend, /complete_racing_verified_run/);
+  assert.match(backend, /consume_racing_verification_rate_limit/);
+  assert.match(frontend, /events:\s*replayEvents/);
+  assert.match(frontend, /result\.score !== gameState\.score/);
+  assert.doesNotMatch(engine, /Math\.random/);
 });
 
 test("frontend keeps strong browser controls and avoids common code sinks", async () => {
@@ -116,7 +135,7 @@ test("production payment endpoint remains blank", async () => {
 });
 
 test("repository does not contain obvious private-key or live-secret assignments", async () => {
-  const files = ["script.js", "payment-config.js", "README.md", "RAZORPAY_LIVE_SETUP.md", "supabase/functions/racing-payments/index.ts"];
+  const files = ["script.js", "payment-config.js", "game-config.js", "README.md", "RAZORPAY_LIVE_SETUP.md", "supabase/functions/racing-payments/index.ts", "supabase/functions/verified-runs/index.ts"];
   for (const file of files) {
     const content = await read(file);
     assert.doesNotMatch(content, /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/);

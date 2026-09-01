@@ -197,6 +197,77 @@ h1 {
   padding: 1.25rem 1rem max(1.5rem, env(safe-area-inset-bottom));
 }
 
+.leaderboard-card {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid #41505a;
+  border-radius: 0.8rem;
+  background: rgb(8 12 15 / 78%);
+}
+
+.leaderboard-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.leaderboard-heading h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.verified-badge {
+  border: 1px solid #58e88b;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  color: #b9f8cb;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.verification-status {
+  margin: 0.8rem 0;
+  color: #a9b4ba;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.verified-leaderboard {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.verified-leaderboard li {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.45rem;
+  background: #151d22;
+}
+
+.verified-leaderboard .rank {
+  color: #58e88b;
+  font-weight: 900;
+}
+
+.verified-leaderboard .racer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.verified-leaderboard .verified-score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+}
+
 kbd {
   border: 1px solid #61717a;
   border-radius: 0.25rem;
