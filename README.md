@@ -2,6 +2,12 @@
 
 Lightweight static HTML/CSS/JavaScript racing game deployed with GitHub Pages.
 
+## Verified online runs
+
+The game now has an optional Supabase-backed official-score path. A server issues a signed run seed, the browser records directional inputs, and the Edge Function independently replays the deterministic simulation before accepting a single score. Editing browser JavaScript can still alter local play, but it cannot directly write an official score or make the verifier accept an impossible result.
+
+Local play remains available if verification is unavailable. Cloud accounts/progress, competitions and payments are deliberately outside this first foundation. See [VERIFIED_RUN_SETUP.md](./VERIFIED_RUN_SETUP.md).
+
 ## Fixed access passes
 
 Payment processing is **disabled**. The prepared model uses a fixed ₹29 one-day pass and ₹99 one-week pass. Both are non-renewing access fees with no wager, prize, cash-out or redeemable value. Players can always restart free.

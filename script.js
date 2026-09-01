@@ -1,6 +1,18 @@
 "use strict";
 
 import { ENTITLEMENT_STORAGE_KEY, PASS_PRODUCTS, TERMS_VERSION, getPassProduct } from "./payment-policy.js";
+import {
+  GAME_HEIGHT,
+  GAME_VERSION,
+  GAME_WIDTH,
+  LANE_COUNT,
+  ROAD_LEFT,
+  ROAD_RIGHT,
+  TICK_SECONDS,
+  TRAFFIC_COLORS,
+  createGameState,
+  stepGame
+} from "./supabase/functions/_shared/racing-engine.js";
 
 const canvas = document.getElementById("gameCanvas");
 
@@ -15,6 +27,7 @@ const scoreElement = document.getElementById("score");
 const bestScoreElement = document.getElementById("bestScore");
 const finalScoreElement = document.getElementById("finalScore");
 const crashOverlayElement = document.getElementById("crashOverlay");
+const crashTitleElement = document.getElementById("crashTitle");
 const crashCountElement = document.getElementById("crashCount");
 const crashNumberElement = document.getElementById("crashNumber");
 const paymentStatusElement = document.getElementById("paymentStatus");
@@ -31,38 +44,21 @@ const usePassButton = document.getElementById("usePassButton");
 const restartButton = document.getElementById("restartButton");
 const leftButton = document.getElementById("moveLeft");
 const rightButton = document.getElementById("moveRight");
+const verificationStatusElement = document.getElementById("verificationStatus");
+const verifiedLeaderboardElement = document.getElementById("verifiedLeaderboard");
 
-const GAME_WIDTH = canvas.width;
-const GAME_HEIGHT = canvas.height;
-const ROAD_LEFT = 52;
-const ROAD_RIGHT = GAME_WIDTH - 52;
-const LANE_COUNT = 3;
-const TRAFFIC_LANE_INSET = 8;
-const TRAFFIC_ROUTE_GAP = 24;
 const PAYMENT_API_BASE = String(window.RACING_PAYMENT_API_BASE || "").replace(/\/$/, "");
+const VERIFICATION_API_BASE = String(window.RACING_VERIFICATION_API_BASE || "").replace(/\/$/, "");
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
-const TRAFFIC_COLORS = ["#ffc857", "#3dd6d0", "#a78bfa", "#ff7b72", "#f8f9fa"];
+const PLAYER_SESSION_STORAGE_KEY = "racingVerifiedPlayerToken";
 
 const keysPressed = { left: false, right: false };
-const player = {
-  x: 0,
-  y: GAME_HEIGHT - 126,
-  width: 52,
-  height: 88,
-  speed: 310,
-  color: "#ff3d4f"
-};
-
-let traffic = [];
-let roadOffset = 0;
-let elapsedTime = 0;
+let gameState = createGameState(1);
 let score = 0;
 let bestScore = readBestScore();
-let spawnTimer = 0;
-let spawnInterval = 1.25;
-let worldSpeed = 245;
 let running = false;
 let lastTime = 0;
+let simulationAccumulator = 0;
 let animationFrameId = 0;
 let crashCount = 0;
 let runId = null;
@@ -71,6 +67,10 @@ let paymentInProgress = false;
 let razorpayLoadPromise = null;
 let activePass = null;
 let selectedProductCode = "";
+let replayEvents = [];
+let recordedDirection = 0;
+let verifiedRunContext = null;
+let resetSequence = 0;
 
 function readBestScore() {
   try {
@@ -95,6 +95,126 @@ function setText(element, value) {
 
 function setPaymentStatus(message) {
   setText(paymentStatusElement, message || "");
+}
+
+function setVerificationStatus(message) {
+  setText(verificationStatusElement, message || "");
+}
+
+function readPlayerToken() {
+  try {
+    return localStorage.getItem(PLAYER_SESSION_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function savePlayerToken(token) {
+  try {
+    if (token) localStorage.setItem(PLAYER_SESSION_STORAGE_KEY, token);
+  } catch {
+    // A blocked browser store means the next verified run gets a new pseudonymous player.
+  }
+}
+
+async function verificationApi(path, payload, token = "", timeoutMs = 4000) {
+  if (!VERIFICATION_API_BASE) throw new Error("Official verification is not configured yet.");
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${VERIFICATION_API_BASE}/${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { "Authorization": `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(payload || {}),
+      signal: controller.signal
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(body?.error || "Official verification is temporarily unavailable.");
+    return body;
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("Official verification timed out.");
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function renderLeaderboard(entries) {
+  if (!verifiedLeaderboardElement) return;
+  const rows = Array.isArray(entries) ? entries : [];
+  const fragment = document.createDocumentFragment();
+  for (const entry of rows) {
+    if (!entry || !Number.isInteger(entry.rank) || !Number.isInteger(entry.score) || typeof entry.name !== "string") continue;
+    const item = document.createElement("li");
+    const rank = document.createElement("span");
+    rank.className = "rank";
+    rank.textContent = `#${entry.rank}`;
+    const name = document.createElement("span");
+    name.className = "racer-name";
+    name.textContent = entry.name;
+    const verifiedScore = document.createElement("strong");
+    verifiedScore.className = "verified-score";
+    verifiedScore.textContent = String(entry.score);
+    item.append(rank, name, verifiedScore);
+    fragment.append(item);
+  }
+  verifiedLeaderboardElement.replaceChildren(fragment);
+}
+
+async function refreshVerifiedLeaderboard() {
+  if (!VERIFICATION_API_BASE) {
+    renderLeaderboard([]);
+    return;
+  }
+  try {
+    const result = await verificationApi("leaderboard", {}, "", 3500);
+    renderLeaderboard(result?.entries);
+  } catch {
+    // The leaderboard is optional. Local play must remain available during outages.
+  }
+}
+
+async function prepareVerifiedRun() {
+  if (!VERIFICATION_API_BASE) {
+    setVerificationStatus("Local play is active. Official verification is not configured yet.");
+    return null;
+  }
+  setVerificationStatus("Requesting a signed official run…");
+  const result = await verificationApi("start-run", {}, readPlayerToken());
+  if (result?.playerToken) savePlayerToken(result.playerToken);
+  if (!result?.runId || !Number.isInteger(result?.seed) || result?.gameVersion !== GAME_VERSION || !result?.ticket) {
+    throw new Error("Verification service returned an invalid run.");
+  }
+  setVerificationStatus(`${result.displayName || "Racer"}: this run is eligible for a verified score.`);
+  return {
+    runId: result.runId,
+    seed: result.seed,
+    ticket: result.ticket,
+    expiresAt: result.expiresAt
+  };
+}
+
+async function submitVerifiedRun() {
+  const run = verifiedRunContext;
+  verifiedRunContext = null;
+  if (!run) return;
+  setVerificationStatus("Checking this run on the server…");
+  try {
+    const result = await verificationApi("submit-run", {
+      runId: run.runId,
+      ticket: run.ticket,
+      endTick: gameState.tick,
+      events: replayEvents
+    }, readPlayerToken(), 12_000);
+    if (!result?.verified || result.score !== gameState.score) throw new Error("Verified result did not match the game.");
+    setVerificationStatus(`✓ Verified score: ${result.score} · ${result.displayName}`);
+    void refreshVerifiedLeaderboard();
+  } catch (error) {
+    setVerificationStatus(`${error.message || "This run could not be verified."} Your local score is still saved.`);
+  }
 }
 
 function setPaymentBusy(isBusy) {
@@ -236,17 +356,18 @@ async function ensureRunId() {
   return resolvedRunId;
 }
 
-function resetGame() {
+async function resetGame() {
+  const currentReset = ++resetSequence;
   cancelAnimationFrame(animationFrameId);
-  traffic = [];
-  roadOffset = 0;
-  elapsedTime = 0;
+  running = false;
+  const seedBytes = crypto.getRandomValues(new Uint32Array(1));
+  let seed = seedBytes[0];
+  verifiedRunContext = null;
   score = 0;
   crashCount = 0;
-  spawnTimer = 0;
-  spawnInterval = 1.25;
-  worldSpeed = 245;
-  player.x = (GAME_WIDTH - player.width) / 2;
+  replayEvents = [];
+  recordedDirection = 0;
+  simulationAccumulator = 0;
   keysPressed.left = false;
   keysPressed.right = false;
   leftButton?.classList.remove("is-pressed");
@@ -258,97 +379,24 @@ function resetGame() {
   if (crashOverlayElement) crashOverlayElement.hidden = true;
   setPaymentBusy(false);
   void refreshPassState();
+
+  try {
+    const preparedRun = await prepareVerifiedRun();
+    if (currentReset !== resetSequence) return;
+    if (preparedRun) {
+      verifiedRunContext = preparedRun;
+      seed = preparedRun.seed;
+    }
+  } catch (error) {
+    if (currentReset !== resetSequence) return;
+    setVerificationStatus(`${error.message || "Official verification is unavailable."} Local play continues.`);
+  }
+
+  gameState = createGameState(seed);
   startServerRun();
   running = true;
   lastTime = performance.now();
   animationFrameId = requestAnimationFrame(gameLoop);
-}
-
-function laneBounds(lane) {
-  const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT;
-  return {
-    left: ROAD_LEFT + lane * laneWidth,
-    right: ROAD_LEFT + (lane + 1) * laneWidth
-  };
-}
-
-function trafficX(lane, carWidth) {
-  const bounds = laneBounds(lane);
-  const minX = Math.max(ROAD_LEFT, bounds.left + TRAFFIC_LANE_INSET);
-  const maxX = Math.min(ROAD_RIGHT - carWidth, bounds.right - carWidth - TRAFFIC_LANE_INSET);
-  return minX + Math.random() * (maxX - minX);
-}
-
-function wouldBlockRoad(candidate) {
-  const nearbyLanes = new Set([candidate.lane]);
-  const safeVerticalGap = candidate.height + player.height + TRAFFIC_ROUTE_GAP;
-
-  for (const car of traffic) {
-    if (Math.abs(car.y - candidate.y) < safeVerticalGap) nearbyLanes.add(car.lane);
-  }
-
-  return nearbyLanes.size === LANE_COUNT;
-}
-
-function spawnTraffic() {
-  const availableLanes = Array.from({ length: LANE_COUNT }, (_, lane) => lane).filter((lane) =>
-    traffic.every((car) => car.lane !== lane || car.y > 170)
-  );
-
-  if (availableLanes.length === 0) return;
-
-  const lane = availableLanes[Math.floor(Math.random() * availableLanes.length)];
-  const width = 50;
-  const height = 84;
-  const candidate = {
-    lane,
-    x: trafficX(lane, width),
-    y: -height - 10,
-    width,
-    height,
-    speedFactor: 0.88 + Math.random() * 0.24,
-    color: TRAFFIC_COLORS[Math.floor(Math.random() * TRAFFIC_COLORS.length)]
-  };
-
-  if (!wouldBlockRoad(candidate)) traffic.push(candidate);
-}
-
-function overlaps(a, b) {
-  const paddingX = 3;
-  const paddingY = 4;
-  return a.x + paddingX < b.x + b.width - paddingX &&
-    a.x + a.width - paddingX > b.x + paddingX &&
-    a.y + paddingY < b.y + b.height - paddingY &&
-    a.y + a.height - paddingY > b.y + paddingY;
-}
-
-function update(deltaTime) {
-  const direction = Number(keysPressed.right) - Number(keysPressed.left);
-  player.x += direction * player.speed * deltaTime;
-  player.x = Math.max(ROAD_LEFT + 8, Math.min(player.x, ROAD_RIGHT - player.width - 8));
-
-  elapsedTime += deltaTime;
-  worldSpeed = Math.min(470, 245 + elapsedTime * 5.2);
-  spawnInterval = Math.max(0.58, 1.25 - elapsedTime * 0.009);
-  roadOffset = (roadOffset + worldSpeed * deltaTime) % 100;
-  spawnTimer += deltaTime;
-
-  if (spawnTimer >= spawnInterval) {
-    spawnTimer -= spawnInterval;
-    spawnTraffic();
-  }
-
-  for (const car of traffic) {
-    car.y += worldSpeed * car.speedFactor * deltaTime;
-    if (overlaps(player, car)) {
-      handleCrash();
-      return;
-    }
-  }
-
-  traffic = traffic.filter((car) => car.y < GAME_HEIGHT + car.height);
-  score = Math.floor(elapsedTime * 10);
-  setText(scoreElement, score);
 }
 
 function drawRoad() {
@@ -364,11 +412,11 @@ function drawRoad() {
   const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT;
   for (let lane = 1; lane < LANE_COUNT; lane += 1) {
     const x = ROAD_LEFT + lane * laneWidth - 3;
-    for (let y = -100 + roadOffset; y < GAME_HEIGHT; y += 100) ctx.fillRect(x, y, 6, 55);
+    for (let y = -100 + gameState.roadOffset; y < GAME_HEIGHT; y += 100) ctx.fillRect(x, y, 6, 55);
   }
 
   ctx.fillStyle = "#d8d8d8";
-  for (let y = -48 + (roadOffset % 48); y < GAME_HEIGHT; y += 48) {
+  for (let y = -48 + (gameState.roadOffset % 48); y < GAME_HEIGHT; y += 48) {
     ctx.fillRect(20, y, 12, 25);
     ctx.fillRect(GAME_WIDTH - 32, y, 12, 25);
   }
@@ -407,15 +455,35 @@ function drawCar(car, isPlayer = false) {
 
 function draw() {
   drawRoad();
-  for (const car of traffic) drawCar(car);
-  drawCar(player, true);
+  for (const car of gameState.traffic) drawCar({ ...car, color: TRAFFIC_COLORS[car.colorIndex] });
+  drawCar(gameState.player, true);
+}
+
+function currentDirection() {
+  return Number(keysPressed.right) - Number(keysPressed.left);
+}
+
+function recordDirectionChange() {
+  const direction = currentDirection();
+  if (direction === recordedDirection) return;
+  recordedDirection = direction;
+  replayEvents.push({ tick: gameState.tick, direction });
 }
 
 function gameLoop(timestamp) {
   if (!running) return;
-  const deltaTime = Math.min((timestamp - lastTime) / 1000, 0.05);
+  const deltaTime = Math.min((timestamp - lastTime) / 1000, 0.25);
   lastTime = timestamp;
-  update(deltaTime);
+  simulationAccumulator = Math.min(simulationAccumulator + deltaTime, 0.25);
+
+  while (simulationAccumulator >= TICK_SECONDS && running) {
+    stepGame(gameState, currentDirection());
+    simulationAccumulator -= TICK_SECONDS;
+    score = gameState.score;
+    if (gameState.crashed || gameState.capped) handleCrash();
+  }
+
+  setText(scoreElement, score);
   draw();
   if (running) animationFrameId = requestAnimationFrame(gameLoop);
 }
@@ -426,13 +494,16 @@ function handleCrash() {
   bestScore = Math.max(bestScore, score);
   saveBestScore();
 
-  crashCount += 1;
+  const didCrash = gameState.crashed;
+  if (didCrash) crashCount += 1;
+  setText(crashTitleElement, didCrash ? "Car Crashed" : "Run Complete");
   setText(bestScoreElement, bestScore);
   setText(finalScoreElement, score);
   setText(crashCountElement, crashCount);
   setText(crashNumberElement, crashCount);
   setPaymentStatus(PAYMENT_API_BASE ? "" : "Payments are not configured yet. Restart free.");
   if (crashOverlayElement) crashOverlayElement.hidden = false;
+  void submitVerifiedRun();
   void refreshPassState().finally(() => {
     if (activePass) usePassButton?.focus();
     else restartButton?.focus();
@@ -441,14 +512,19 @@ function handleCrash() {
 
 function resumeAfterVerifiedPayment() {
   // Prevent an immediate second collision with the same traffic cluster.
-  traffic = traffic.filter((car) => Math.abs((car.y + car.height / 2) - (player.y + player.height / 2)) > 155);
-  player.x = (GAME_WIDTH - player.width) / 2;
+  gameState.traffic = gameState.traffic.filter((car) => Math.abs((car.y + car.height / 2) - (gameState.player.y + gameState.player.height / 2)) > 155);
+  gameState.player.x = (GAME_WIDTH - gameState.player.width) / 2;
+  gameState.crashed = false;
+  verifiedRunContext = null;
+  setVerificationStatus("Paid continuation is local-only in this version. Start a new run for an official score.");
   keysPressed.left = false;
   keysPressed.right = false;
+  recordDirectionChange();
   setPaymentStatus("");
   if (crashOverlayElement) crashOverlayElement.hidden = true;
   setPaymentBusy(false);
   running = true;
+  simulationAccumulator = 0;
   lastTime = performance.now();
   animationFrameId = requestAnimationFrame(gameLoop);
 }
@@ -582,6 +658,7 @@ document.addEventListener("keydown", (event) => {
   if (!direction) return;
   event.preventDefault();
   keysPressed[direction] = true;
+  recordDirectionChange();
 });
 
 document.addEventListener("keyup", (event) => {
@@ -589,11 +666,13 @@ document.addEventListener("keyup", (event) => {
   if (!direction) return;
   event.preventDefault();
   keysPressed[direction] = false;
+  recordDirectionChange();
 });
 
 window.addEventListener("blur", () => {
   keysPressed.left = false;
   keysPressed.right = false;
+  recordDirectionChange();
 });
 
 function bindTouchControl(button, direction) {
@@ -602,6 +681,7 @@ function bindTouchControl(button, direction) {
   const release = (event) => {
     event.preventDefault();
     keysPressed[direction] = false;
+    recordDirectionChange();
     button.classList.remove("is-pressed");
   };
 
@@ -610,6 +690,7 @@ function bindTouchControl(button, direction) {
     event.preventDefault();
     button.setPointerCapture(event.pointerId);
     keysPressed[direction] = true;
+    recordDirectionChange();
     button.classList.add("is-pressed");
   });
   button.addEventListener("pointerup", release);
@@ -634,6 +715,7 @@ declineAdultButton?.addEventListener("click", (event) => {
   continueToPaymentButton?.focus();
 });
 usePassButton?.addEventListener("click", useActivePass);
-restartButton?.addEventListener("click", resetGame);
+restartButton?.addEventListener("click", () => void resetGame());
 
-resetGame();
+void refreshVerifiedLeaderboard();
+void resetGame();

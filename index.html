@@ -47,7 +47,7 @@
 
       <div id="crashOverlay" class="game-over" hidden>
         <p class="game-over-label">Crash <span id="crashNumber">1</span></p>
-        <h2>Car Crashed</h2>
+        <h2 id="crashTitle">Car Crashed</h2>
         <p>You scored <strong id="finalScore">0</strong> points.</p>
         <p id="activePassMessage" class="active-pass" hidden></p>
         <div id="passPurchasePanel">
@@ -81,6 +81,18 @@
       On mobile, hold the arrows to dodge traffic.
     </p>
 
+    <section class="leaderboard-card" aria-labelledby="leaderboardTitle">
+      <div class="leaderboard-heading">
+        <div>
+          <p class="eyebrow">Official rankings</p>
+          <h2 id="leaderboardTitle">Verified Scores</h2>
+        </div>
+        <span class="verified-badge">Server checked</span>
+      </div>
+      <p id="verificationStatus" class="verification-status" role="status" aria-live="polite">Local play is available. Official verification will appear here when configured.</p>
+      <ol id="verifiedLeaderboard" class="verified-leaderboard" aria-label="Top verified scores"></ol>
+    </section>
+
     <footer class="site-footer">
       <a href="./terms.html">Terms</a>
       <a href="./privacy.html">Privacy</a>
@@ -104,6 +116,7 @@
   </dialog>
 
   <script src="./payment-config.js"></script>
+  <script src="./game-config.js"></script>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",

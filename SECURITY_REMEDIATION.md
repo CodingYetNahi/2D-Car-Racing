@@ -16,13 +16,16 @@ This branch implements the code changes that can be made safely before live merc
 - Kept all payment tables behind RLS and revoked browser-role access.
 - Pinned GitHub Actions to immutable commit SHAs and added least-privilege security tests.
 - Added recovery for repeated verification without extending the original expiry.
+- Added deterministic, fixed-tick gameplay shared by the browser and server verifier.
+- Added signed, expiring, single-use official runs and server-side replay validation.
+- Added pseudonymous player tokens stored only as SHA-256 hashes, RLS-denied verification tables, and a server-read leaderboard.
 
 ## Still blocks payment launch
 
-- The game simulation runs in the player's browser. A player can alter local JavaScript and bypass the visible continue screen. No browser-only design can make local gameplay authoritative. If preventing unpaid continuation is a firm business requirement, move scoring, crash decisions and continue authorization to an authenticated server session before enabling payment.
+- A player can still alter local JavaScript, bypass the visible continue screen and play a modified local copy. Official scores are now server-replayed and cannot be directly written from the browser. Enforcing paid access to all gameplay would additionally require authenticated server sessions and recurring server decisions; it is not implemented and payments remain disabled.
 - The operator legal identity, address, private support/grievance contact and GST treatment are not known and therefore are not invented in this repository.
 - Gaming counsel/Authority classification, Razorpay written approval and CA sign-off remain external gates.
-- The migration and Edge Function still require isolated Supabase and Razorpay Test Mode integration tests. No production keys or live charge should be used for this review.
+- The verified-run schema and Edge Function passed isolated live integration tests. The separate payment migration and Razorpay flow still require Test Mode integration tests. No production payment key or live charge should be used for this review.
 
 ## Verification
 
