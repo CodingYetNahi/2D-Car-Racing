@@ -19,15 +19,47 @@ test("legacy escalating crash pricing is removed", async () => {
   assert.doesNotMatch(html, /price increases|Pay ₹9/i);
 });
 
-test("checkout requires adult consent and legal links", async () => {
+test("checkout asks for adult confirmation only after pass selection", async () => {
   const html = await read("index.html");
   const source = await read("script.js");
-  assert.match(html, /id="adultConfirmation"/);
+  assert.match(html, /id="continueToPaymentButton"/);
+  assert.match(html, /id="ageDialog"/);
+  assert.match(html, /Are you 18 or older\?/);
+  assert.match(source, /continueToPaymentButton\?\.addEventListener\("click", askForAdultConfirmation\)/);
+  assert.match(source, /confirmAdultButton\?\.addEventListener/);
+  assert.doesNotMatch(html, /id="adultConfirmation"/);
   assert.match(source, /adultConfirmed:\s*true/);
   for (const page of ["terms.html", "privacy.html", "refund.html", "parents.html", "contact.html"]) {
     await stat(new URL(`../${page}`, import.meta.url));
     assert.match(html, new RegExp(page.replace(".", "\\.")));
   }
+});
+
+test("mobile layout prevents page drift and handles both orientations", async () => {
+  const css = await read("style.css");
+  const paymentCss = await read("payment.css");
+  const source = await read("script.js");
+  assert.match(css, /body\.game-page[\s\S]*overflow:\s*hidden/);
+  assert.match(css, /orientation:\s*landscape/);
+  assert.match(css, /\.game-over[\s\S]*overflow-y:\s*auto/);
+  assert.match(paymentCss, /\.age-dialog::backdrop/);
+  assert.match(source, /opposing traffic travels down/);
+});
+
+test("SEO has canonical metadata, crawl controls and structured game data", async () => {
+  const html = await read("index.html");
+  const robots = await read("robots.txt");
+  const sitemap = await read("sitemap.xml");
+  const customDomain = await read("CNAME");
+  const manifest = JSON.parse(await read("site.webmanifest"));
+  assert.match(html, /<link rel="canonical" href="https:\/\/racinggame\.fun\/">/);
+  assert.match(html, /<meta property="og:title"/);
+  assert.match(html, /<script type="application\/ld\+json">/);
+  assert.match(html, /"@type": "VideoGame"/);
+  assert.match(robots, /Sitemap: https:\/\/racinggame\.fun\/sitemap\.xml/);
+  assert.match(sitemap, /<loc>https:\/\/racinggame\.fun\/<\/loc>/);
+  assert.equal(customDomain.trim(), "racinggame.fun");
+  assert.equal(manifest.start_url, "/");
 });
 
 test("all local page assets and links resolve", async () => {

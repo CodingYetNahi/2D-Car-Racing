@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Racing car">
+  <rect width="64" height="64" rx="14" fill="#101418"/>
+  <path d="M22 11h20l7 12v28a6 6 0 0 1-6 6H21a6 6 0 0 1-6-6V23l7-12Z" fill="#ff3d4f"/>
+  <path d="m24 16-4 11h24l-4-11H24Z" fill="#bde7f5"/>
+  <rect x="21" y="34" width="22" height="9" rx="3" fill="#17242a"/>
+  <rect x="19" y="13" width="8" height="4" rx="2" fill="#fff4a8"/>
+  <rect x="37" y="13" width="8" height="4" rx="2" fill="#fff4a8"/>
+  <rect x="19" y="50" width="8" height="4" rx="2" fill="#ff8b8b"/>
+  <rect x="37" y="50" width="8" height="4" rx="2" fill="#ff8b8b"/>
+</svg>

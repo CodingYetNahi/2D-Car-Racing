@@ -1,0 +1,20 @@
+{
+  "name": "RacingGame.fun – Free 2D Car Racing Game",
+  "short_name": "RacingGame.fun",
+  "description": "A fast, free 2D car racing game for mobile and desktop browsers.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0d10",
+  "theme_color": "#101418",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
+
