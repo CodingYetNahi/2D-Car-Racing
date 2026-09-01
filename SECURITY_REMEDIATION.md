@@ -25,7 +25,7 @@ This branch implements the code changes that can be made safely before live merc
 - A player can still alter local JavaScript, bypass the visible continue screen and play a modified local copy. Official scores are now server-replayed and cannot be directly written from the browser. Enforcing paid access to all gameplay would additionally require authenticated server sessions and recurring server decisions; it is not implemented and payments remain disabled.
 - The operator legal identity, address, private support/grievance contact and GST treatment are not known and therefore are not invented in this repository.
 - Gaming counsel/Authority classification, Razorpay written approval and CA sign-off remain external gates.
-- The migration and Edge Function still require isolated Supabase and Razorpay Test Mode integration tests. No production keys or live charge should be used for this review.
+- The verified-run schema and Edge Function passed isolated live integration tests. The separate payment migration and Razorpay flow still require Test Mode integration tests. No production payment key or live charge should be used for this review.
 
 ## Verification
 

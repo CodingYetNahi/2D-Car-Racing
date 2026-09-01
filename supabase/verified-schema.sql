@@ -51,6 +51,7 @@ grant usage, select on sequence public.racing_verified_scores_id_seq to service_
 create index if not exists racing_verified_runs_player_idx on public.racing_verified_runs(player_id, issued_at desc);
 create index if not exists racing_verified_runs_expiry_idx on public.racing_verified_runs(status, expires_at);
 create index if not exists racing_verified_scores_rank_idx on public.racing_verified_scores(score desc, created_at asc);
+create index if not exists racing_verified_scores_player_idx on public.racing_verified_scores(player_id, created_at desc);
 create index if not exists racing_verification_rate_bucket_idx on public.racing_verification_rate_limits(bucket);
 
 create or replace function public.consume_racing_verification_rate_limit(
@@ -126,4 +127,3 @@ revoke execute on function public.consume_racing_verification_rate_limit(text, t
 revoke execute on function public.complete_racing_verified_run(uuid, uuid, integer, integer, integer) from public, anon, authenticated;
 grant execute on function public.consume_racing_verification_rate_limit(text, text, timestamptz, integer) to service_role;
 grant execute on function public.complete_racing_verified_run(uuid, uuid, integer, integer, integer) to service_role;
-

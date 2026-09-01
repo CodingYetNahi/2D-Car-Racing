@@ -2,6 +2,14 @@
 
 This phase protects official scores without making free local gameplay depend on a backend. It does not enable payments, prizes, real-money competition or cloud accounts.
 
+## Current deployment
+
+- Supabase project: `vwmxyogkrfhzxjoegjot` (`ap-south-1`)
+- Edge Function: `https://vwmxyogkrfhzxjoegjot.supabase.co/functions/v1/verified-runs`
+- Browser configuration: enabled in `game-config.js`
+- Live verification: signed run creation, server replay, duplicate rejection (`409`), origin rejection (`403`) and leaderboard retrieval passed on 2026-09-01
+- Test data: removed after verification; production tables started empty
+
 ## Security model
 
 1. `start-run` creates a pseudonymous player when needed, a random seed, a 20-minute expiry and an HMAC ticket.
@@ -14,7 +22,7 @@ The player token is an opaque identifier, not an authentication credential for s
 
 ## Deploy
 
-Use a dedicated Supabase project, not a database shared with another application.
+Use the dedicated Supabase project, not a database shared with another application.
 
 1. Apply `supabase/verified-schema.sql`.
 2. Deploy `supabase/functions/verified-runs/index.ts` with JWT verification disabled because this function validates its own opaque bearer token. Do not expose the service-role key.

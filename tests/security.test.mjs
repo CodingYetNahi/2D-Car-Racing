@@ -134,6 +134,13 @@ test("production payment endpoint remains blank", async () => {
   assert.match(config, /window\.RACING_PAYMENT_API_BASE\s*=\s*""/);
 });
 
+test("official verification uses the dedicated backend without embedding credentials", async () => {
+  const config = await read("game-config.js");
+  const assignedValue = /window\.RACING_VERIFICATION_API_BASE\s*=\s*"([^"]+)"/.exec(config)?.[1] || "";
+  assert.equal(assignedValue, "https://vwmxyogkrfhzxjoegjot.supabase.co/functions/v1/verified-runs");
+  assert.doesNotMatch(assignedValue, /service_role|secret|eyJ[A-Za-z0-9_-]{20,}/i);
+});
+
 test("repository does not contain obvious private-key or live-secret assignments", async () => {
   const files = ["script.js", "payment-config.js", "game-config.js", "README.md", "RAZORPAY_LIVE_SETUP.md", "supabase/functions/racing-payments/index.ts", "supabase/functions/verified-runs/index.ts"];
   for (const file of files) {
