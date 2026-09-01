@@ -16,13 +16,20 @@
 }
 
 .pass-button,
-#usePassButton {
+#usePassButton,
+.continue-payment-button {
   border: 2px solid #58e88b;
   border-radius: 0.65rem;
   background: #10271a;
   color: #fff;
   padding: 0.75rem;
   cursor: pointer;
+}
+
+.pass-button[aria-pressed="true"] {
+  border-color: #fff4a8;
+  background: #1f4b2f;
+  box-shadow: 0 0 0 2px rgb(255 244 168 / 25%);
 }
 
 .pass-button strong,
@@ -36,22 +43,10 @@
   font-size: 0.78rem;
 }
 
-.adult-confirmation {
-  display: flex;
-  gap: 0.55rem;
-  align-items: flex-start;
-  margin: 0.65rem auto;
-  max-width: 25rem;
-  text-align: left;
-  font-size: 0.78rem;
-  line-height: 1.4;
-}
-
-.adult-confirmation input {
-  width: 1rem;
-  height: 1rem;
-  margin-top: 0.08rem;
-  accent-color: #58e88b;
+.continue-payment-button {
+  width: 100%;
+  margin-bottom: 0.65rem;
+  font-weight: 900;
 }
 
 .active-pass {
@@ -107,7 +102,8 @@
 }
 
 .pass-button:disabled,
-#usePassButton:disabled {
+#usePassButton:disabled,
+.continue-payment-button:disabled {
   cursor: wait;
   opacity: 0.65;
 }
@@ -120,9 +116,59 @@
 
 .pass-button:focus-visible,
 #usePassButton:focus-visible,
+.continue-payment-button:focus-visible,
 .secondary-button:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 2px;
+}
+
+.age-dialog {
+  width: min(calc(100% - 2rem), 30rem);
+  border: 1px solid #60717b;
+  border-radius: 0.9rem;
+  padding: 0;
+  background: #10181d;
+  color: #fff;
+  box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 70%);
+}
+
+.age-dialog::backdrop {
+  background: rgb(0 0 0 / 78%);
+  backdrop-filter: blur(4px);
+}
+
+.age-dialog-card {
+  padding: 1.35rem;
+}
+
+.age-dialog h2 {
+  margin: 0 0 0.75rem;
+}
+
+.age-dialog p:not(.eyebrow) {
+  color: #c4cdd2;
+  line-height: 1.5;
+}
+
+.selected-pass-summary {
+  color: #b9f8cb !important;
+  font-weight: 800;
+}
+
+.age-dialog-actions {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+#confirmAdultButton {
+  border: 0;
+  border-radius: 0.55rem;
+  padding: 0.8rem 1.2rem;
+  background: #58e88b;
+  color: #06150b;
+  font-weight: 900;
+  cursor: pointer;
 }
 
 .site-footer {

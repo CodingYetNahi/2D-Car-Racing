@@ -20,9 +20,13 @@ const crashNumberElement = document.getElementById("crashNumber");
 const paymentStatusElement = document.getElementById("paymentStatus");
 const passPurchasePanel = document.getElementById("passPurchasePanel");
 const activePassMessage = document.getElementById("activePassMessage");
-const adultConfirmation = document.getElementById("adultConfirmation");
 const dayPassButton = document.getElementById("dayPassButton");
 const weekPassButton = document.getElementById("weekPassButton");
+const continueToPaymentButton = document.getElementById("continueToPaymentButton");
+const ageDialog = document.getElementById("ageDialog");
+const selectedPassSummary = document.getElementById("selectedPassSummary");
+const confirmAdultButton = document.getElementById("confirmAdultButton");
+const declineAdultButton = document.getElementById("declineAdultButton");
 const usePassButton = document.getElementById("usePassButton");
 const restartButton = document.getElementById("restartButton");
 const leftButton = document.getElementById("moveLeft");
@@ -66,6 +70,7 @@ let runStartPromise = null;
 let paymentInProgress = false;
 let razorpayLoadPromise = null;
 let activePass = null;
+let selectedProductCode = "";
 
 function readBestScore() {
   try {
@@ -96,8 +101,36 @@ function setPaymentBusy(isBusy) {
   paymentInProgress = isBusy;
   if (dayPassButton) dayPassButton.disabled = isBusy || !PAYMENT_API_BASE;
   if (weekPassButton) weekPassButton.disabled = isBusy || !PAYMENT_API_BASE;
+  if (continueToPaymentButton) continueToPaymentButton.disabled = isBusy || !PAYMENT_API_BASE || !selectedProductCode;
   if (usePassButton) usePassButton.disabled = isBusy;
   if (restartButton) restartButton.disabled = isBusy;
+}
+
+function selectPass(productCode) {
+  const product = getPassProduct(productCode);
+  if (!product || paymentInProgress) return;
+  selectedProductCode = product.code;
+
+  dayPassButton?.setAttribute("aria-pressed", String(product.code === PASS_PRODUCTS.day.code));
+  weekPassButton?.setAttribute("aria-pressed", String(product.code === PASS_PRODUCTS.week.code));
+  if (continueToPaymentButton) {
+    continueToPaymentButton.disabled = !PAYMENT_API_BASE;
+    continueToPaymentButton.textContent = `Continue with ${product.name}`;
+  }
+  setPaymentStatus("");
+}
+
+function askForAdultConfirmation() {
+  const product = getPassProduct(selectedProductCode);
+  if (!product || paymentInProgress) return;
+  setText(selectedPassSummary, `${product.name}: ₹${product.amountPaise / 100} for ${product.durationHours === 24 ? "24 hours" : "7 days"}.`);
+
+  if (ageDialog instanceof HTMLDialogElement && typeof ageDialog.showModal === "function") {
+    ageDialog.showModal();
+    return;
+  }
+
+  setPaymentStatus("Your browser cannot open the secure age check. Please update it before buying a pass.");
 }
 
 function readAccessToken() {
@@ -359,9 +392,16 @@ function drawCar(car, isPlayer = false) {
   ctx.fill();
   ctx.fillStyle = "#17242a";
   ctx.fillRect(8, 48, car.width - 16, 18);
-  ctx.fillStyle = isPlayer ? "#fff4a8" : "#ff5d5d";
-  ctx.fillRect(5, isPlayer ? 3 : car.height - 7, 10, 4);
-  ctx.fillRect(car.width - 15, isPlayer ? 3 : car.height - 7, 10, 4);
+  // The player travels up the road; opposing traffic travels down it.
+  // Headlights and tail lights make that direction clear in both orientations.
+  ctx.fillStyle = "#fff4a8";
+  const frontLightY = isPlayer ? 3 : car.height - 7;
+  ctx.fillRect(5, frontLightY, 10, 4);
+  ctx.fillRect(car.width - 15, frontLightY, 10, 4);
+  ctx.fillStyle = "#ff5d5d";
+  const rearLightY = isPlayer ? car.height - 7 : 3;
+  ctx.fillRect(5, rearLightY, 10, 4);
+  ctx.fillRect(car.width - 15, rearLightY, 10, 4);
   ctx.restore();
 }
 
@@ -433,12 +473,6 @@ async function buyPass(productCode) {
   if (paymentInProgress) return;
   const product = getPassProduct(productCode);
   if (!product) return;
-
-  if (!(adultConfirmation instanceof HTMLInputElement) || !adultConfirmation.checked) {
-    setPaymentStatus("Only an adult aged 18 or older may buy a pass. Ask a parent or guardian to make the purchase.");
-    adultConfirmation?.focus();
-    return;
-  }
 
   setPaymentBusy(true);
   setPaymentStatus("Preparing secure payment…");
@@ -585,8 +619,20 @@ function bindTouchControl(button, direction) {
 
 bindTouchControl(leftButton, "left");
 bindTouchControl(rightButton, "right");
-dayPassButton?.addEventListener("click", () => buyPass(PASS_PRODUCTS.day.code));
-weekPassButton?.addEventListener("click", () => buyPass(PASS_PRODUCTS.week.code));
+dayPassButton?.addEventListener("click", () => selectPass(PASS_PRODUCTS.day.code));
+weekPassButton?.addEventListener("click", () => selectPass(PASS_PRODUCTS.week.code));
+continueToPaymentButton?.addEventListener("click", askForAdultConfirmation);
+confirmAdultButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  ageDialog?.close("yes");
+  void buyPass(selectedProductCode);
+});
+declineAdultButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  ageDialog?.close("no");
+  setPaymentStatus("A parent or guardian aged 18 or older must make the purchase in their own name.");
+  continueToPaymentButton?.focus();
+});
 usePassButton?.addEventListener("click", useActivePass);
 restartButton?.addEventListener("click", resetGame);
 

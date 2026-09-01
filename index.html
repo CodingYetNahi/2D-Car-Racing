@@ -3,20 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://checkout.razorpay.com; style-src 'self'; img-src 'self' data: https://*.razorpay.com; font-src 'self'; connect-src 'self' https://*.supabase.co https://*.razorpay.com; frame-src https://*.razorpay.com; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-muz2nZSa/BpoJc0ZjeZHxGAXj9HpsyypqvTUbxKmpH8=' https://checkout.razorpay.com; style-src 'self'; img-src 'self' data: https://*.razorpay.com; font-src 'self'; connect-src 'self' https://*.supabase.co https://*.razorpay.com; frame-src https://*.razorpay.com; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="theme-color" content="#101418">
-  <meta name="description" content="A lightweight browser-based 2D car racing game with optional fixed-time access passes and a free restart.">
-  <title>2D Racing Game</title>
+  <meta name="description" content="Play a fast, free 2D car racing game online. Dodge traffic, beat your best score and race on mobile or desktop—no download needed.">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="author" content="RacingGame.fun">
+  <meta name="application-name" content="RacingGame.fun">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="RacingGame.fun">
+  <meta property="og:title" content="Free 2D Car Racing Game Online | RacingGame.fun">
+  <meta property="og:description" content="Dodge traffic and beat your best score in a fast browser racing game. Play free on mobile or desktop.">
+  <meta property="og:url" content="https://racinggame.fun/">
+  <meta property="og:locale" content="en_IN">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Free 2D Car Racing Game Online">
+  <meta name="twitter:description" content="Dodge traffic and beat your best score. Play free in your browser—no download needed.">
+  <link rel="canonical" href="https://racinggame.fun/">
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="./site.webmanifest">
+  <title>Free 2D Car Racing Game Online | RacingGame.fun</title>
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./payment.css">
 </head>
-<body>
+<body class="game-page">
   <main class="game-shell">
     <header class="game-header">
       <div>
         <p class="eyebrow">Endless highway</p>
-        <h1>2D Racing Game</h1>
+        <h1>Free 2D Car Racing Game</h1>
       </div>
       <div class="scoreboard" aria-label="Game scores">
         <p>Score <strong id="score">0</strong></p>
@@ -38,13 +53,10 @@
         <div id="passPurchasePanel">
           <p class="continue-price">Choose a fixed, non-renewing pass</p>
           <div class="pass-options" aria-label="Access pass options">
-            <button id="dayPassButton" class="pass-button" type="button"><strong>1 Day Pass</strong><span>₹29 · 24 hours</span></button>
-            <button id="weekPassButton" class="pass-button" type="button"><strong>1 Week Pass</strong><span>₹99 · 7 days</span></button>
+            <button id="dayPassButton" class="pass-button" type="button" aria-pressed="false"><strong>1 Day Pass</strong><span>₹29 · 24 hours</span></button>
+            <button id="weekPassButton" class="pass-button" type="button" aria-pressed="false"><strong>1 Week Pass</strong><span>₹99 · 7 days</span></button>
           </div>
-          <label class="adult-confirmation">
-            <input id="adultConfirmation" type="checkbox">
-            <span>I am 18 or older and I am making this purchase myself.</span>
-          </label>
+          <button id="continueToPaymentButton" class="continue-payment-button" type="button" disabled>Choose a pass to continue</button>
           <p class="payment-note">A pass gives unlimited continues for its stated time. It does not renew. There is no prize, cash-out, wager or redeemable reward. You can always restart free.</p>
           <p class="legal-links">By buying, the adult purchaser accepts the <a href="./terms.html">Terms</a> and <a href="./refund.html">Refund Policy</a>. See our <a href="./privacy.html">Privacy Notice</a> and <a href="./parents.html">Parent Guide</a>.</p>
         </div>
@@ -62,10 +74,23 @@
     </div>
 
     <p class="help-text">
-      Steer with <kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd>.
-      On a phone, hold the on-screen arrows.
+      Play this free online racing game with <kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd>.
+      On mobile, hold the arrows to dodge traffic.
     </p>
   </main>
+
+  <dialog id="ageDialog" class="age-dialog" aria-labelledby="ageDialogTitle" aria-describedby="ageDialogText">
+    <form method="dialog" class="age-dialog-card">
+      <p class="eyebrow">Age confirmation</p>
+      <h2 id="ageDialogTitle">Are you 18 or older?</h2>
+      <p id="ageDialogText">Only an adult may buy the selected pass. If you are under 18, ask a parent or guardian to make the purchase in their own name.</p>
+      <p id="selectedPassSummary" class="selected-pass-summary"></p>
+      <div class="age-dialog-actions">
+        <button id="confirmAdultButton" value="yes" type="submit">Yes, I am 18+</button>
+        <button id="declineAdultButton" class="secondary-button" value="no" type="submit">No, I am under 18</button>
+      </div>
+    </form>
+  </dialog>
 
   <footer class="site-footer">
     <a href="./terms.html">Terms</a>
@@ -76,6 +101,28 @@
   </footer>
 
   <script src="./payment-config.js"></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "RacingGame.fun – Free 2D Car Racing Game",
+    "url": "https://racinggame.fun/",
+    "description": "A free browser-based 2D car racing game where players dodge traffic and try to beat their best score.",
+    "genre": ["Racing", "Arcade"],
+    "gamePlatform": ["Web browser", "Mobile", "Desktop"],
+    "playMode": "SinglePlayer",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "Any modern web browser",
+    "inLanguage": "en-IN",
+    "isAccessibleForFree": true,
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "INR",
+      "availability": "https://schema.org/InStock"
+    }
+  }
+  </script>
   <script type="module" src="./script.js"></script>
 </body>
 </html>
