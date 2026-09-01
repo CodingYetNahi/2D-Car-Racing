@@ -23,12 +23,10 @@ body {
 }
 
 body.game-page {
-  height: 100dvh;
   min-height: 100svh;
-  overflow: hidden;
-  overscroll-behavior: none;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-x: none;
 }
 
 button {
@@ -37,14 +35,14 @@ button {
 
 .game-shell {
   width: min(100%, 36rem);
-  min-height: 0;
-  height: 100%;
+  height: 100dvh;
+  min-height: 32rem;
   margin: 0 auto;
   padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem max(1rem, env(safe-area-inset-bottom));
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 0.65rem;
+  overflow: hidden;
 }
 
 .game-header {
@@ -97,10 +95,11 @@ h1 {
 
 .game-stage {
   position: relative;
-  width: min(100%, calc((100dvh - 12.5rem) * 2 / 3));
-  min-width: 15rem;
+  width: auto;
+  height: min(100%, 52rem, calc((100vw - 1.5rem) * 3 / 2));
+  min-width: 0;
+  min-height: 0;
   aspect-ratio: 2 / 3;
-  flex: 0 1 auto;
   margin: 0 auto;
   overflow: hidden;
   border: 2px solid #70808a;
@@ -192,6 +191,12 @@ h1 {
   text-align: center;
 }
 
+.below-game {
+  width: min(100%, 48rem);
+  margin: 0 auto;
+  padding: 1.25rem 1rem max(1.5rem, env(safe-area-inset-bottom));
+}
+
 kbd {
   border: 1px solid #61717a;
   border-radius: 0.25rem;
@@ -216,13 +221,14 @@ kbd {
   }
 
   .game-header,
-  .help-text {
+  .touch-controls {
     grid-column: 1;
   }
 
   .game-stage {
     grid-column: 2;
     grid-row: 1 / 4;
+    height: auto;
     width: min(calc((100dvh - 1.5rem) * 2 / 3), calc(100vw - 15rem));
   }
 
@@ -231,9 +237,6 @@ kbd {
     padding: 1rem;
   }
 
-  .site-footer {
-    display: none;
-  }
 }
 
 @media (max-height: 700px) and (orientation: portrait) {
@@ -242,12 +245,4 @@ kbd {
     padding-block: max(0.35rem, env(safe-area-inset-top)) max(0.35rem, env(safe-area-inset-bottom));
   }
 
-  .game-stage {
-    width: min(100%, calc((100dvh - 10.5rem) * 2 / 3));
-  }
-
-  .help-text,
-  .site-footer {
-    display: none;
-  }
 }
