@@ -6,4 +6,5 @@
 //
 // Never put RAZORPAY_KEY_SECRET, webhook secrets, Supabase service-role keys,
 // or any other private credential in this public GitHub Pages repository.
-window.RACING_PAYMENT_API_BASE = "";
+window.RACING_PAYMENT_API_BASE =
+  "https://vwmxyogkrfhzxjoegjot.supabase.co/functions/v1/racing-payments";
