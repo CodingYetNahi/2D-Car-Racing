@@ -46,6 +46,16 @@
         Your browser does not support the canvas element required to play this game.
       </canvas>
 
+      <div id="modeOverlay" class="mode-overlay">
+        <p class="eyebrow">Choose your road</p>
+        <h2>Ready to drive?</h2>
+        <div class="mode-options" role="group" aria-label="Road direction">
+          <button type="button" data-road-mode="one-way" aria-pressed="true"><strong>One way</strong><span>Classic four-lane highway</span></button>
+          <button type="button" data-road-mode="two-way" aria-pressed="false"><strong>Two way</strong><span>Adaptive traffic and lane merges</span></button>
+        </div>
+        <button id="startGameButton" type="button">Start race</button>
+      </div>
+
       <div id="crashOverlay" class="game-over" hidden>
         <p class="game-over-label">Crash <span id="crashNumber">1</span></p>
         <h2 id="crashTitle">Car Crashed</h2>

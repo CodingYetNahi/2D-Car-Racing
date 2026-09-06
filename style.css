@@ -29,6 +29,13 @@ body.game-page {
   overscroll-behavior-x: none;
 }
 
+body.game-page,
+body.game-page * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 button {
   font: inherit;
 }
@@ -131,6 +138,27 @@ h1 {
   background: #25292c;
   touch-action: none;
 }
+
+.mode-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  align-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  background: rgb(4 9 12 / 90%);
+  text-align: center;
+  backdrop-filter: blur(5px);
+}
+
+.mode-overlay[hidden] { display: none; }
+.mode-overlay h2 { margin: 0; font-size: 2rem; }
+.mode-options { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.mode-options button { padding: .8rem .5rem; border: 1px solid #60717b; border-radius: .65rem; background: #151d22; color: #fff; cursor: pointer; }
+.mode-options button[aria-pressed="true"] { border-color: #58e88b; background: #1f4b2f; }
+.mode-options span { display: block; margin-top: .25rem; color: #b8c2c8; font-size: .65rem; }
+#startGameButton { padding: .85rem; border: 0; border-radius: .6rem; background: #58e88b; color: #06150b; font-weight: 900; cursor: pointer; }
 
 .game-over {
   position: absolute;

@@ -48,15 +48,23 @@ test("replay events reproduce the browser simulation", () => {
   assert.deepEqual(verifiedState.traffic, browserState.traffic);
 });
 
-test("known seed produces a stable verified crash", () => {
-  const state = replayGame(1, [], 299);
+test("known seed produces a stable verified capped run", () => {
+  const state = replayGame(1, [], MAX_VERIFIED_TICKS);
   assert.deepEqual(publicRunResult(state), {
     version: GAME_VERSION,
-    tick: 299,
-    score: 49,
-    crashed: true,
-    capped: false
+    tick: MAX_VERIFIED_TICKS,
+    score: 6000,
+    crashed: false,
+    capped: true
   });
+});
+
+test("two-way roads use four lanes, opposing traffic, adaptive driving and periodic merges", () => {
+  const state = createGameState(42, { roadMode: "two-way" });
+  assert.equal(state.roadMode, "two-way");
+  for (let tick = 0; tick < 900 && !state.crashed; tick += 1) stepGame(state, tick < 180 ? -1 : 1);
+  assert.notEqual(state.playerDirectionBias, 0);
+  assert.ok(state.traffic.every((car) => Number.isInteger(car.lane) && car.lane >= 0 && car.lane < 4));
 });
 
 test("replay validation rejects oversized, unordered and impossible input", () => {
