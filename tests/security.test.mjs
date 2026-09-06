@@ -116,8 +116,9 @@ test("official scores use signed, single-use, server-replayed runs", async () =>
   assert.match(backend, /replayGame/);
   assert.match(backend, /complete_racing_verified_run/);
   assert.match(backend, /consume_racing_verification_rate_limit/);
-  assert.match(frontend, /events:\s*replayEvents/);
-  assert.match(frontend, /result\.score !== gameState\.score/);
+  assert.match(frontend, /const events = replayEvents\.map/);
+  assert.match(frontend, /endTick,\s*events/);
+  assert.match(frontend, /result\.score !== submittedScore/);
   assert.doesNotMatch(engine, /Math\.random/);
 });
 
@@ -129,9 +130,21 @@ test("frontend keeps strong browser controls and avoids common code sinks", asyn
   assert.doesNotMatch(source, /innerHTML|outerHTML|document\.write|\beval\s*\(|new Function/);
 });
 
-test("production payment endpoint remains blank", async () => {
+test("public payment config points only to the deployed Edge Function", async () => {
   const config = await read("payment-config.js");
-  assert.match(config, /window\.RACING_PAYMENT_API_BASE\s*=\s*""/);
+  const assignedValue = [...config.matchAll(/^window\.RACING_PAYMENT_API_BASE\s*=\s*\n?\s*"([^"]+)"/gm)].at(-1)?.[1] || "";
+  assert.equal(assignedValue, "https://vwmxyogkrfhzxjoegjot.supabase.co/functions/v1/racing-payments");
+  assert.doesNotMatch(assignedValue, /service_role|secret|key_secret|eyJ[A-Za-z0-9_-]{20,}/i);
+});
+
+test("paid cosmetics expire with the server-checked pass and score submission uses a snapshot", async () => {
+  const html = await read("index.html");
+  const source = await read("script.js");
+  assert.match(html, /id="garage"[^>]*hidden/);
+  assert.match(source, /garageElement\.hidden = !hasActivePass/);
+  assert.match(source, /const submittedScore = gameState\.score/);
+  assert.match(source, /result\.score !== submittedScore/);
+  assert.match(source, /await refreshVerifiedLeaderboard/);
 });
 
 test("official verification uses the dedicated backend without embedding credentials", async () => {

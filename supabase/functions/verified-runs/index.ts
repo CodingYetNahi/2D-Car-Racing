@@ -218,7 +218,12 @@ export default {
           p_input_count: events.length
         });
         if (completion.error) return json({ error: "Run was already submitted or could not be verified" }, 409, origin);
-        return json({ verified: true, score: verifiedState.score, tick: verifiedState.tick, displayName: playerResult.data.display_name }, 200, origin);
+        const rankResult = await db.from("racing_verified_scores")
+          .select("id", { count: "exact", head: true })
+          .eq("game_version", GAME_VERSION)
+          .gt("score", verifiedState.score);
+        if (rankResult.error) throw rankResult.error;
+        return json({ verified: true, score: verifiedState.score, tick: verifiedState.tick, rank: (rankResult.count || 0) + 1, displayName: playerResult.data.display_name }, 200, origin);
       }
 
       if (action === "leaderboard") {
@@ -236,7 +241,26 @@ export default {
           score: row.score,
           achievedAt: row.created_at
         }));
-        return json({ gameVersion: GAME_VERSION, entries }, 200, origin);
+        let playerEntry: Record<string, unknown> | null = null;
+        const playerToken = bearerToken(req);
+        if (playerToken) {
+          const playerResult = await db.from("racing_verified_players").select("id,display_name")
+            .eq("token_hash", await sha256Hex(playerToken)).maybeSingle();
+          if (playerResult.error) throw playerResult.error;
+          if (playerResult.data) {
+            const bestResult = await db.from("racing_verified_scores").select("score,created_at")
+              .eq("player_id", playerResult.data.id).eq("game_version", GAME_VERSION)
+              .order("score", { ascending: false }).order("created_at", { ascending: true }).limit(1).maybeSingle();
+            if (bestResult.error) throw bestResult.error;
+            if (bestResult.data) {
+              const rankResult = await db.from("racing_verified_scores").select("id", { count: "exact", head: true })
+                .eq("game_version", GAME_VERSION).gt("score", bestResult.data.score);
+              if (rankResult.error) throw rankResult.error;
+              playerEntry = { rank: (rankResult.count || 0) + 1, name: playerResult.data.display_name, score: bestResult.data.score, achievedAt: bestResult.data.created_at };
+            }
+          }
+        }
+        return json({ gameVersion: GAME_VERSION, entries, playerEntry }, 200, origin);
       }
 
       return json({ error: "Not found" }, 404, origin);

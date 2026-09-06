@@ -46,6 +46,9 @@ const leftButton = document.getElementById("moveLeft");
 const rightButton = document.getElementById("moveRight");
 const verificationStatusElement = document.getElementById("verificationStatus");
 const verifiedLeaderboardElement = document.getElementById("verifiedLeaderboard");
+const musicToggle = document.getElementById("musicToggle");
+const garageElement = document.getElementById("garage");
+const skinButtons = [...document.querySelectorAll(".skin-button")];
 
 const PAYMENT_API_BASE = String(window.RACING_PAYMENT_API_BASE || "").replace(/\/$/, "");
 const VERIFICATION_API_BASE = String(window.RACING_VERIFICATION_API_BASE || "").replace(/\/$/, "");
@@ -71,6 +74,10 @@ let replayEvents = [];
 let recordedDirection = 0;
 let verifiedRunContext = null;
 let resetSequence = 0;
+let selectedSkin = "neon";
+let musicEnabled = false;
+let audioContext = null;
+let musicNodes = [];
 
 function readBestScore() {
   try {
@@ -142,13 +149,19 @@ async function verificationApi(path, payload, token = "", timeoutMs = 4000) {
   }
 }
 
-function renderLeaderboard(entries) {
+function renderLeaderboard(entries, playerEntry = null) {
   if (!verifiedLeaderboardElement) return;
-  const rows = Array.isArray(entries) ? entries : [];
+  const rows = Array.isArray(entries) ? [...entries] : [];
+  if (playerEntry && Number.isInteger(playerEntry.rank) && Number.isInteger(playerEntry.score)) {
+    const existingIndex = rows.findIndex((entry) => entry?.name === playerEntry.name && entry?.score === playerEntry.score);
+    if (existingIndex >= 0) rows[existingIndex] = { ...rows[existingIndex], isPlayer: true };
+    else rows.push({ ...playerEntry, isPlayer: true });
+  }
   const fragment = document.createDocumentFragment();
   for (const entry of rows) {
     if (!entry || !Number.isInteger(entry.rank) || !Number.isInteger(entry.score) || typeof entry.name !== "string") continue;
     const item = document.createElement("li");
+    if (entry.isPlayer) item.classList.add("is-player");
     const rank = document.createElement("span");
     rank.className = "rank";
     rank.textContent = `#${entry.rank}`;
@@ -170,8 +183,8 @@ async function refreshVerifiedLeaderboard() {
     return;
   }
   try {
-    const result = await verificationApi("leaderboard", {}, "", 3500);
-    renderLeaderboard(result?.entries);
+    const result = await verificationApi("leaderboard", {}, readPlayerToken(), 3500);
+    renderLeaderboard(result?.entries, result?.playerEntry);
   } catch {
     // The leaderboard is optional. Local play must remain available during outages.
   }
@@ -201,17 +214,23 @@ async function submitVerifiedRun() {
   const run = verifiedRunContext;
   verifiedRunContext = null;
   if (!run) return;
+  // A payment may resume the mutable game state while this request is in flight.
+  // Compare against an immutable crash snapshot so a valid score is not discarded.
+  const submittedScore = gameState.score;
+  const endTick = gameState.tick;
+  const events = replayEvents.map((event) => ({ ...event }));
   setVerificationStatus("Checking this run on the server…");
   try {
     const result = await verificationApi("submit-run", {
       runId: run.runId,
       ticket: run.ticket,
-      endTick: gameState.tick,
-      events: replayEvents
+      endTick,
+      events
     }, readPlayerToken(), 12_000);
-    if (!result?.verified || result.score !== gameState.score) throw new Error("Verified result did not match the game.");
-    setVerificationStatus(`✓ Verified score: ${result.score} · ${result.displayName}`);
-    void refreshVerifiedLeaderboard();
+    if (!result?.verified || result.score !== submittedScore) throw new Error("Verified result did not match the game.");
+    const rankText = Number.isInteger(result.rank) ? ` · Rank #${result.rank}` : "";
+    setVerificationStatus(`✓ Verified score: ${result.score}${rankText} · ${result.displayName}`);
+    await refreshVerifiedLeaderboard();
   } catch (error) {
     setVerificationStatus(`${error.message || "This run could not be verified."} Your local score is still saved.`);
   }
@@ -299,6 +318,8 @@ async function paymentApi(path, payload, accessToken = "") {
 function renderPassState() {
   const hasActivePass = Boolean(activePass?.active && activePass?.expiresAt);
   if (passPurchasePanel) passPurchasePanel.hidden = hasActivePass;
+  if (garageElement) garageElement.hidden = !hasActivePass;
+  if (!hasActivePass) selectedSkin = "neon";
   if (usePassButton) usePassButton.hidden = !hasActivePass;
   if (activePassMessage) {
     activePassMessage.hidden = !hasActivePass;
@@ -306,6 +327,12 @@ function renderPassState() {
       ? `${activePass.productName} active until ${new Date(activePass.expiresAt).toLocaleString()}.`
       : "";
   }
+}
+
+function selectSkin(skin) {
+  if (!activePass?.active || !["neon", "sunset", "royal"].includes(skin)) return;
+  selectedSkin = skin;
+  for (const button of skinButtons) button.setAttribute("aria-pressed", String(button.dataset.skin === skin));
 }
 
 async function refreshPassState() {
@@ -396,6 +423,7 @@ async function resetGame() {
   startServerRun();
   running = true;
   lastTime = performance.now();
+  updateMusicState();
   animationFrameId = requestAnimationFrame(gameLoop);
 }
 
@@ -430,10 +458,15 @@ function drawCar(car, isPlayer = false) {
   ctx.fillRect(car.width - 1, 12, 5, 20);
   ctx.fillRect(-4, car.height - 31, 5, 20);
   ctx.fillRect(car.width - 1, car.height - 31, 5, 20);
-  ctx.fillStyle = car.color;
+  const paidPaint = { neon: "#58e88b", sunset: "#ff6f61", royal: "#8d7bff" };
+  ctx.fillStyle = isPlayer && activePass?.active ? paidPaint[selectedSkin] : car.color;
   ctx.beginPath();
   ctx.roundRect(0, 0, car.width, car.height, 9);
   ctx.fill();
+  if (isPlayer && activePass?.active) {
+    ctx.fillStyle = selectedSkin === "royal" ? "#ffd86b" : "#f7f9fa";
+    ctx.fillRect(car.width / 2 - 3, 3, 6, car.height - 6);
+  }
   ctx.fillStyle = "#bde7f5";
   ctx.beginPath();
   ctx.roundRect(8, 14, car.width - 16, 22, 5);
@@ -503,6 +536,7 @@ function handleCrash() {
   setText(crashNumberElement, crashCount);
   setPaymentStatus(PAYMENT_API_BASE ? "" : "Payments are not configured yet. Restart free.");
   if (crashOverlayElement) crashOverlayElement.hidden = false;
+  updateMusicState();
   void submitVerifiedRun();
   void refreshPassState().finally(() => {
     if (activePass) usePassButton?.focus();
@@ -524,9 +558,57 @@ function resumeAfterVerifiedPayment() {
   if (crashOverlayElement) crashOverlayElement.hidden = true;
   setPaymentBusy(false);
   running = true;
+  updateMusicState();
   simulationAccumulator = 0;
   lastTime = performance.now();
   animationFrameId = requestAnimationFrame(gameLoop);
+}
+
+function stopMusic() {
+  for (const node of musicNodes) {
+    try { node.stop(); } catch { /* The node may already be stopped. */ }
+    node.disconnect();
+  }
+  musicNodes = [];
+}
+
+function updateMusicState() {
+  stopMusic();
+  if (!musicEnabled || !running || !audioContext) return;
+  const master = audioContext.createGain();
+  master.gain.value = 0.035;
+  master.connect(audioContext.destination);
+  const bass = audioContext.createOscillator();
+  bass.type = "sawtooth";
+  bass.frequency.value = 82.41;
+  const pulse = audioContext.createOscillator();
+  pulse.type = "square";
+  pulse.frequency.value = 164.81;
+  const pulseGain = audioContext.createGain();
+  pulseGain.gain.value = 0.18;
+  const lfo = audioContext.createOscillator();
+  lfo.frequency.value = 4;
+  const lfoGain = audioContext.createGain();
+  lfoGain.gain.value = 0.14;
+  lfo.connect(lfoGain).connect(pulseGain.gain);
+  bass.connect(master);
+  pulse.connect(pulseGain).connect(master);
+  bass.start(); pulse.start(); lfo.start();
+  musicNodes = [bass, pulse, lfo];
+}
+
+async function toggleMusic() {
+  musicEnabled = !musicEnabled;
+  if (musicEnabled) {
+    audioContext ||= new AudioContext();
+    await audioContext.resume();
+  }
+  musicToggle?.setAttribute("aria-pressed", String(musicEnabled));
+  if (musicToggle) {
+    musicToggle.textContent = musicEnabled ? "Music on" : "Music off";
+    musicToggle.setAttribute("aria-label", musicEnabled ? "Turn race music off" : "Turn race music on");
+  }
+  updateMusicState();
 }
 
 function loadRazorpayCheckout() {
@@ -716,6 +798,8 @@ declineAdultButton?.addEventListener("click", (event) => {
 });
 usePassButton?.addEventListener("click", useActivePass);
 restartButton?.addEventListener("click", () => void resetGame());
+musicToggle?.addEventListener("click", () => void toggleMusic());
+for (const button of skinButtons) button.addEventListener("click", () => selectSkin(button.dataset.skin || ""));
 
 void refreshVerifiedLeaderboard();
 void resetGame();

@@ -38,6 +38,7 @@
         <p>Best <strong id="bestScore">0</strong></p>
         <p>Crashes <strong id="crashCount">0</strong></p>
       </div>
+      <button id="musicToggle" class="music-toggle" type="button" aria-pressed="false" aria-label="Turn race music on">Music off</button>
     </header>
 
     <section class="game-stage" aria-label="2D racing game">
@@ -72,6 +73,16 @@
       <button id="moveLeft" type="button" aria-label="Steer left">&#9664;</button>
       <button id="moveRight" type="button" aria-label="Steer right">&#9654;</button>
     </div>
+
+    <section id="garage" class="garage" aria-labelledby="garageTitle" hidden>
+      <span id="garageTitle">Pass garage</span>
+      <div class="skin-options" role="group" aria-label="Choose your pass-exclusive car">
+        <button type="button" class="skin-button" data-skin="neon" aria-pressed="true">Neon GT</button>
+        <button type="button" class="skin-button" data-skin="sunset" aria-pressed="false">Sunset Turbo</button>
+        <button type="button" class="skin-button" data-skin="royal" aria-pressed="false">Royal Racer</button>
+      </div>
+      <small>Exclusive cars are available only while your pass is active.</small>
+    </section>
 
   </main>
 
