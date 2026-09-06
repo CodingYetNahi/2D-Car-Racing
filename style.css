@@ -40,7 +40,7 @@ button {
   margin: 0 auto;
   padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem max(1rem, env(safe-area-inset-bottom));
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 0.65rem;
   overflow: hidden;
 }
@@ -50,6 +50,23 @@ button {
   align-items: end;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.music-toggle {
+  flex: 0 0 auto;
+  border: 1px solid #60717b;
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  background: #1c252a;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.music-toggle[aria-pressed="true"] {
+  border-color: #58e88b;
+  color: #b9f8cb;
 }
 
 .eyebrow,
@@ -164,6 +181,51 @@ h1 {
   gap: 0.75rem;
 }
 
+.garage {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #41505a;
+  border-radius: 0.55rem;
+  background: rgb(8 12 15 / 82%);
+  text-align: center;
+}
+
+.garage > span {
+  color: #b9f8cb;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.garage small {
+  display: block;
+  margin-top: 0.3rem;
+  color: #a9b4ba;
+  font-size: 0.62rem;
+}
+
+.skin-options {
+  display: flex;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+}
+
+.skin-button {
+  border: 1px solid #60717b;
+  border-radius: 999px;
+  padding: 0.25rem 0.5rem;
+  background: #151d22;
+  color: #fff;
+  font-size: 0.66rem;
+  cursor: pointer;
+}
+
+.skin-button[aria-pressed="true"] {
+  border-color: #fff4a8;
+  background: #1f4b2f;
+}
+
 .touch-controls button {
   width: min(42vw, 10rem);
   min-height: 3.25rem;
@@ -250,6 +312,11 @@ h1 {
   padding: 0.5rem 0.6rem;
   border-radius: 0.45rem;
   background: #151d22;
+}
+
+.verified-leaderboard li.is-player {
+  outline: 2px solid #fff4a8;
+  background: #203526;
 }
 
 .verified-leaderboard .rank {
