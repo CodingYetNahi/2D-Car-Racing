@@ -1,4 +1,4 @@
-export const GAME_VERSION = "2.0.0";
+export const GAME_VERSION = "2.1.0";
 export const TICK_RATE = 60;
 export const TICK_SECONDS = 1 / TICK_RATE;
 export const MAX_VERIFIED_TICKS = TICK_RATE * 60 * 10;
@@ -7,7 +7,7 @@ export const GAME_WIDTH = 480;
 export const GAME_HEIGHT = 720;
 export const ROAD_LEFT = 52;
 export const ROAD_RIGHT = GAME_WIDTH - 52;
-export const LANE_COUNT = 3;
+export const LANE_COUNT = 4;
 
 const PLAYER_WIDTH = 52;
 const PLAYER_HEIGHT = 88;
@@ -59,7 +59,9 @@ function wouldBlockRoad(state, candidate) {
 }
 
 function spawnTraffic(state) {
+  const mergeActive = state.roadMode === "two-way" && Math.floor(state.tick / (TICK_RATE * 6)) % 3 === 2;
   const availableLanes = Array.from({ length: LANE_COUNT }, (_, lane) => lane).filter((lane) =>
+    (!mergeActive || lane === 1 || lane === 2) &&
     state.traffic.every((car) => car.lane !== lane || car.y > 170)
   );
   if (availableLanes.length === 0) return;
@@ -72,7 +74,8 @@ function spawnTraffic(state) {
     width: TRAFFIC_WIDTH,
     height: TRAFFIC_HEIGHT,
     speedFactor: 0.88 + nextRandom(state) * 0.24,
-    colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length)
+    colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length),
+    direction: state.roadMode === "two-way" && lane < 2 ? 1 : 0
   };
 
   if (!wouldBlockRoad(state, candidate)) state.traffic.push(candidate);
@@ -87,7 +90,7 @@ export function overlaps(a, b) {
     a.y + a.height - paddingY > b.y + paddingY;
 }
 
-export function createGameState(seed) {
+export function createGameState(seed, options = {}) {
   return {
     version: GAME_VERSION,
     seed: normalizeSeed(seed),
@@ -99,6 +102,8 @@ export function createGameState(seed) {
     roadOffset: 0,
     spawnProgress: 0,
     worldSpeed: 245,
+    roadMode: options.roadMode === "two-way" ? "two-way" : "one-way",
+    playerDirectionBias: 0,
     traffic: [],
     player: {
       x: (GAME_WIDTH - PLAYER_WIDTH) / 2,
@@ -114,8 +119,16 @@ export function stepGame(state, direction = 0) {
   if (state.crashed || state.capped) return state;
   const safeDirection = direction === -1 || direction === 1 ? direction : 0;
 
+  // A small deterministic moving average lets traffic react to the player's
+  // steering style without collecting or transmitting behavioural data.
+  state.playerDirectionBias = state.playerDirectionBias * 0.97 + safeDirection * 0.03;
+
   state.player.x += safeDirection * PLAYER_SPEED_PER_TICK;
-  state.player.x = Math.max(ROAD_LEFT + 8, Math.min(state.player.x, ROAD_RIGHT - state.player.width - 8));
+  const mergeActive = state.roadMode === "two-way" && Math.floor(state.tick / (TICK_RATE * 6)) % 3 === 2;
+  const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT;
+  const driveLeft = mergeActive ? ROAD_LEFT + laneWidth : ROAD_LEFT;
+  const driveRight = mergeActive ? ROAD_RIGHT - laneWidth : ROAD_RIGHT;
+  state.player.x = Math.max(driveLeft + 8, Math.min(state.player.x, driveRight - state.player.width - 8));
 
   state.tick += 1;
   const elapsedSeconds = state.tick / TICK_RATE;
@@ -130,7 +143,18 @@ export function stepGame(state, direction = 0) {
   }
 
   for (const car of state.traffic) {
-    car.y += state.worldSpeed * car.speedFactor * TICK_SECONDS;
+    const adaptiveDelay = 75 + Math.floor(nextRandom(state) * 45);
+    if (state.tick % adaptiveDelay === 0 && Math.abs(state.playerDirectionBias) > 0.24) {
+      const targetLane = Math.max(0, Math.min(LANE_COUNT - 1, car.lane + Math.sign(state.playerDirectionBias)));
+      if (!state.traffic.some((other) => other !== car && other.lane === targetLane && Math.abs(other.y - car.y) < 125)) {
+        car.lane = targetLane;
+      }
+    }
+    const bounds = laneBounds(car.lane);
+    const targetX = (bounds.left + bounds.right - car.width) / 2;
+    car.x += Math.max(-0.7, Math.min(0.7, targetX - car.x));
+    const directionBoost = state.roadMode === "two-way" && car.direction ? 1.45 : 1;
+    car.y += state.worldSpeed * car.speedFactor * directionBoost * TICK_SECONDS;
     if (overlaps(state.player, car)) {
       state.crashed = true;
       break;

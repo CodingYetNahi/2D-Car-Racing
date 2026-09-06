@@ -49,6 +49,9 @@ const verifiedLeaderboardElement = document.getElementById("verifiedLeaderboard"
 const musicToggle = document.getElementById("musicToggle");
 const garageElement = document.getElementById("garage");
 const skinButtons = [...document.querySelectorAll(".skin-button")];
+const modeOverlay = document.getElementById("modeOverlay");
+const startGameButton = document.getElementById("startGameButton");
+const modeButtons = [...document.querySelectorAll("[data-road-mode]")];
 
 const PAYMENT_API_BASE = String(window.RACING_PAYMENT_API_BASE || "").replace(/\/$/, "");
 const VERIFICATION_API_BASE = String(window.RACING_VERIFICATION_API_BASE || "").replace(/\/$/, "");
@@ -78,6 +81,7 @@ let selectedSkin = "neon";
 let musicEnabled = false;
 let audioContext = null;
 let musicNodes = [];
+let selectedRoadMode = "one-way";
 
 function readBestScore() {
   try {
@@ -348,7 +352,9 @@ async function refreshPassState() {
     activePass = result?.active ? result : null;
     if (!activePass) saveAccessToken("");
   } catch {
-    activePass = null;
+    // Keep a still-unexpired, previously server-verified entitlement during a
+    // transient outage. It cannot authorize a continuation without the server.
+    if (!activePass?.expiresAt || Date.parse(activePass.expiresAt) <= Date.now()) activePass = null;
   }
   renderPassState();
   return activePass;
@@ -408,18 +414,21 @@ async function resetGame() {
   void refreshPassState();
 
   try {
-    const preparedRun = await prepareVerifiedRun();
+    const preparedRun = selectedRoadMode === "one-way" ? await prepareVerifiedRun() : null;
     if (currentReset !== resetSequence) return;
     if (preparedRun) {
       verifiedRunContext = preparedRun;
       seed = preparedRun.seed;
+    }
+    if (selectedRoadMode === "two-way") {
+      setVerificationStatus("Two-way mode uses adaptive local traffic. Choose one-way mode for an official verified score.");
     }
   } catch (error) {
     if (currentReset !== resetSequence) return;
     setVerificationStatus(`${error.message || "Official verification is unavailable."} Local play continues.`);
   }
 
-  gameState = createGameState(seed);
+  gameState = createGameState(seed, { roadMode: selectedRoadMode });
   startServerRun();
   running = true;
   lastTime = performance.now();
@@ -428,9 +437,18 @@ async function resetGame() {
 }
 
 function drawRoad() {
-  ctx.fillStyle = "#176b37";
+  const phase = Math.floor((gameState.tick / 60) / 22) % 5;
+  const themes = [
+    { verge: "#176b37", road: "#272b2e", sky: "summer" },
+    { verge: "#526a72", road: "#30383c", sky: "rain" },
+    { verge: "#d9e7ec", road: "#566066", sky: "snow" },
+    { verge: "#49351d", road: "#34302b", sky: "winter" },
+    { verge: "#071329", road: "#121923", sky: "night" }
+  ];
+  const theme = themes[phase];
+  ctx.fillStyle = theme.verge;
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  ctx.fillStyle = "#272b2e";
+  ctx.fillStyle = theme.road;
   ctx.fillRect(ROAD_LEFT, 0, ROAD_RIGHT - ROAD_LEFT, GAME_HEIGHT);
   ctx.fillStyle = "#e9eef0";
   ctx.fillRect(ROAD_LEFT, 0, 5, GAME_HEIGHT);
@@ -441,6 +459,29 @@ function drawRoad() {
   for (let lane = 1; lane < LANE_COUNT; lane += 1) {
     const x = ROAD_LEFT + lane * laneWidth - 3;
     for (let y = -100 + gameState.roadOffset; y < GAME_HEIGHT; y += 100) ctx.fillRect(x, y, 6, 55);
+  }
+
+  if (gameState.roadMode === "two-way") {
+    ctx.fillStyle = "#ffd34e";
+    ctx.fillRect(GAME_WIDTH / 2 - 3, 0, 6, GAME_HEIGHT);
+    // Every 18 seconds a short work-zone taper visually merges four lanes to two.
+    const mergeActive = Math.floor(gameState.tick / (60 * 6)) % 3 === 2;
+    if (mergeActive) {
+      ctx.fillStyle = "#ff8c42";
+      for (let y = 90; y < 310; y += 44) {
+        const inset = (y - 90) * .16;
+        ctx.fillRect(ROAD_LEFT + inset, y, 12, 24);
+        ctx.fillRect(ROAD_RIGHT - inset - 12, y, 12, 24);
+      }
+    }
+  }
+  if (theme.sky === "rain" || theme.sky === "snow") {
+    ctx.fillStyle = theme.sky === "snow" ? "rgb(255 255 255 / 75%)" : "rgb(155 210 255 / 48%)";
+    for (let i = 0; i < 34; i += 1) {
+      const x = (i * 83 + gameState.tick * (theme.sky === "snow" ? 1 : 3)) % GAME_WIDTH;
+      const y = (i * 47 + gameState.tick * 4) % GAME_HEIGHT;
+      ctx.fillRect(x, y, theme.sky === "snow" ? 4 : 2, theme.sky === "snow" ? 4 : 13);
+    }
   }
 
   ctx.fillStyle = "#d8d8d8";
@@ -576,18 +617,18 @@ function updateMusicState() {
   stopMusic();
   if (!musicEnabled || !running || !audioContext) return;
   const master = audioContext.createGain();
-  master.gain.value = 0.035;
+  master.gain.value = 0.025;
   master.connect(audioContext.destination);
   const bass = audioContext.createOscillator();
-  bass.type = "sawtooth";
-  bass.frequency.value = 82.41;
+  bass.type = "sine";
+  bass.frequency.value = 110;
   const pulse = audioContext.createOscillator();
-  pulse.type = "square";
+  pulse.type = "sine";
   pulse.frequency.value = 164.81;
   const pulseGain = audioContext.createGain();
-  pulseGain.gain.value = 0.18;
+  pulseGain.gain.value = 0.12;
   const lfo = audioContext.createOscillator();
-  lfo.frequency.value = 4;
+  lfo.frequency.value = 0.08;
   const lfoGain = audioContext.createGain();
   lfoGain.gain.value = 0.14;
   lfo.connect(lfoGain).connect(pulseGain.gain);
@@ -801,5 +842,17 @@ restartButton?.addEventListener("click", () => void resetGame());
 musicToggle?.addEventListener("click", () => void toggleMusic());
 for (const button of skinButtons) button.addEventListener("click", () => selectSkin(button.dataset.skin || ""));
 
+document.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+});
+for (const button of modeButtons) button.addEventListener("click", () => {
+  selectedRoadMode = button.dataset.roadMode === "two-way" ? "two-way" : "one-way";
+  for (const option of modeButtons) option.setAttribute("aria-pressed", String(option === button));
+});
+startGameButton?.addEventListener("click", () => {
+  if (modeOverlay) modeOverlay.hidden = true;
+  void resetGame();
+});
+
 void refreshVerifiedLeaderboard();
-void resetGame();
+draw();

@@ -128,6 +128,8 @@ test("frontend keeps strong browser controls and avoids common code sinks", asyn
   assert.match(html, /Content-Security-Policy/);
   assert.doesNotMatch(html, /unsafe-inline|unsafe-eval/);
   assert.doesNotMatch(source, /innerHTML|outerHTML|document\.write|\beval\s*\(|new Function/);
+  assert.match(source, /addEventListener\("contextmenu"/);
+  assert.match(await read("style.css"), /-webkit-touch-callout:\s*none/);
 });
 
 test("public payment config points only to the deployed Edge Function", async () => {
