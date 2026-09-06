@@ -13,6 +13,9 @@ import {
   createGameState,
   stepGame
 } from "./supabase/functions/_shared/racing-engine.js";
+import { EngineAudio } from "./engine-audio.js";
+import { DEFAULT_SKIN, SKIN_STORAGE_KEY, isKnownSkin, resolveSelectedSkin } from "./skin-policy.js";
+import { mixHex, weatherState } from "./weather.js";
 
 const canvas = document.getElementById("gameCanvas");
 
@@ -77,10 +80,9 @@ let replayEvents = [];
 let recordedDirection = 0;
 let verifiedRunContext = null;
 let resetSequence = 0;
-let selectedSkin = "neon";
-let musicEnabled = false;
-let audioContext = null;
-let musicNodes = [];
+let selectedSkin = DEFAULT_SKIN;
+let engineEnabled = false;
+const engineAudio = new EngineAudio();
 let selectedRoadMode = "one-way";
 
 function readBestScore() {
@@ -323,7 +325,17 @@ function renderPassState() {
   const hasActivePass = Boolean(activePass?.active && activePass?.expiresAt);
   if (passPurchasePanel) passPurchasePanel.hidden = hasActivePass;
   if (garageElement) garageElement.hidden = !hasActivePass;
-  if (!hasActivePass) selectedSkin = "neon";
+  let savedSkin = "";
+  try {
+    savedSkin = localStorage.getItem(SKIN_STORAGE_KEY) || "";
+  } catch {
+    // Cosmetic persistence is optional.
+  }
+  selectedSkin = resolveSelectedSkin(savedSkin, hasActivePass);
+  if (!hasActivePass || !isKnownSkin(savedSkin)) {
+    try { localStorage.removeItem(SKIN_STORAGE_KEY); } catch { /* Storage may be blocked. */ }
+  }
+  for (const button of skinButtons) button.setAttribute("aria-pressed", String(button.dataset.skin === selectedSkin));
   if (usePassButton) usePassButton.hidden = !hasActivePass;
   if (activePassMessage) {
     activePassMessage.hidden = !hasActivePass;
@@ -336,6 +348,7 @@ function renderPassState() {
 function selectSkin(skin) {
   if (!activePass?.active || !["neon", "sunset", "royal"].includes(skin)) return;
   selectedSkin = skin;
+  try { localStorage.setItem(SKIN_STORAGE_KEY, skin); } catch { /* Cosmetic persistence is optional. */ }
   for (const button of skinButtons) button.setAttribute("aria-pressed", String(button.dataset.skin === skin));
 }
 
@@ -432,23 +445,28 @@ async function resetGame() {
   startServerRun();
   running = true;
   lastTime = performance.now();
-  updateMusicState();
+  updateEngineState();
   animationFrameId = requestAnimationFrame(gameLoop);
 }
 
+function drawPrecipitation(type, opacity) {
+  if (type !== "rain" && type !== "snow" || opacity <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = type === "snow" ? "rgb(255 255 255 / 75%)" : "rgb(155 210 255 / 48%)";
+  for (let i = 0; i < 34; i += 1) {
+    const x = (i * 83 + gameState.tick * (type === "snow" ? 1 : 3)) % GAME_WIDTH;
+    const y = (i * 47 + gameState.tick * 4) % GAME_HEIGHT;
+    ctx.fillRect(x, y, type === "snow" ? 4 : 2, type === "snow" ? 4 : 13);
+  }
+  ctx.restore();
+}
+
 function drawRoad() {
-  const phase = Math.floor((gameState.tick / 60) / 22) % 5;
-  const themes = [
-    { verge: "#176b37", road: "#272b2e", sky: "summer" },
-    { verge: "#526a72", road: "#30383c", sky: "rain" },
-    { verge: "#d9e7ec", road: "#566066", sky: "snow" },
-    { verge: "#49351d", road: "#34302b", sky: "winter" },
-    { verge: "#071329", road: "#121923", sky: "night" }
-  ];
-  const theme = themes[phase];
-  ctx.fillStyle = theme.verge;
+  const weather = weatherState(gameState.tick);
+  ctx.fillStyle = mixHex(weather.current.verge, weather.next.verge, weather.mix);
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  ctx.fillStyle = theme.road;
+  ctx.fillStyle = mixHex(weather.current.road, weather.next.road, weather.mix);
   ctx.fillRect(ROAD_LEFT, 0, ROAD_RIGHT - ROAD_LEFT, GAME_HEIGHT);
   ctx.fillStyle = "#e9eef0";
   ctx.fillRect(ROAD_LEFT, 0, 5, GAME_HEIGHT);
@@ -463,26 +481,10 @@ function drawRoad() {
 
   if (gameState.roadMode === "two-way") {
     ctx.fillStyle = "#ffd34e";
-    ctx.fillRect(GAME_WIDTH / 2 - 3, 0, 6, GAME_HEIGHT);
-    // Every 18 seconds a short work-zone taper visually merges four lanes to two.
-    const mergeActive = Math.floor(gameState.tick / (60 * 6)) % 3 === 2;
-    if (mergeActive) {
-      ctx.fillStyle = "#ff8c42";
-      for (let y = 90; y < 310; y += 44) {
-        const inset = (y - 90) * .16;
-        ctx.fillRect(ROAD_LEFT + inset, y, 12, 24);
-        ctx.fillRect(ROAD_RIGHT - inset - 12, y, 12, 24);
-      }
-    }
+    ctx.fillRect(ROAD_LEFT + laneWidth - 3, 0, 6, GAME_HEIGHT);
   }
-  if (theme.sky === "rain" || theme.sky === "snow") {
-    ctx.fillStyle = theme.sky === "snow" ? "rgb(255 255 255 / 75%)" : "rgb(155 210 255 / 48%)";
-    for (let i = 0; i < 34; i += 1) {
-      const x = (i * 83 + gameState.tick * (theme.sky === "snow" ? 1 : 3)) % GAME_WIDTH;
-      const y = (i * 47 + gameState.tick * 4) % GAME_HEIGHT;
-      ctx.fillRect(x, y, theme.sky === "snow" ? 4 : 2, theme.sky === "snow" ? 4 : 13);
-    }
-  }
+  drawPrecipitation(weather.current.precipitation, 1 - weather.mix);
+  drawPrecipitation(weather.next.precipitation, weather.mix);
 
   ctx.fillStyle = "#d8d8d8";
   for (let y = -48 + (gameState.roadOffset % 48); y < GAME_HEIGHT; y += 48) {
@@ -552,6 +554,7 @@ function gameLoop(timestamp) {
 
   while (simulationAccumulator >= TICK_SECONDS && running) {
     stepGame(gameState, currentDirection());
+    engineAudio.setSpeed(gameState.worldSpeed);
     simulationAccumulator -= TICK_SECONDS;
     score = gameState.score;
     if (gameState.crashed || gameState.capped) handleCrash();
@@ -577,7 +580,7 @@ function handleCrash() {
   setText(crashNumberElement, crashCount);
   setPaymentStatus(PAYMENT_API_BASE ? "" : "Payments are not configured yet. Restart free.");
   if (crashOverlayElement) crashOverlayElement.hidden = false;
-  updateMusicState();
+  updateEngineState();
   void submitVerifiedRun();
   void refreshPassState().finally(() => {
     if (activePass) usePassButton?.focus();
@@ -599,57 +602,32 @@ function resumeAfterVerifiedPayment() {
   if (crashOverlayElement) crashOverlayElement.hidden = true;
   setPaymentBusy(false);
   running = true;
-  updateMusicState();
+  updateEngineState();
   simulationAccumulator = 0;
   lastTime = performance.now();
   animationFrameId = requestAnimationFrame(gameLoop);
 }
 
-function stopMusic() {
-  for (const node of musicNodes) {
-    try { node.stop(); } catch { /* The node may already be stopped. */ }
-    node.disconnect();
-  }
-  musicNodes = [];
-}
-
-function updateMusicState() {
-  stopMusic();
-  if (!musicEnabled || !running || !audioContext) return;
-  const master = audioContext.createGain();
-  master.gain.value = 0.025;
-  master.connect(audioContext.destination);
-  const bass = audioContext.createOscillator();
-  bass.type = "sine";
-  bass.frequency.value = 110;
-  const pulse = audioContext.createOscillator();
-  pulse.type = "sine";
-  pulse.frequency.value = 164.81;
-  const pulseGain = audioContext.createGain();
-  pulseGain.gain.value = 0.12;
-  const lfo = audioContext.createOscillator();
-  lfo.frequency.value = 0.08;
-  const lfoGain = audioContext.createGain();
-  lfoGain.gain.value = 0.14;
-  lfo.connect(lfoGain).connect(pulseGain.gain);
-  bass.connect(master);
-  pulse.connect(pulseGain).connect(master);
-  bass.start(); pulse.start(); lfo.start();
-  musicNodes = [bass, pulse, lfo];
+function updateEngineState() {
+  engineAudio.setRunning(engineEnabled && running && !document.hidden);
 }
 
 async function toggleMusic() {
-  musicEnabled = !musicEnabled;
-  if (musicEnabled) {
-    audioContext ||= new AudioContext();
-    await audioContext.resume();
+  engineEnabled = !engineEnabled;
+  try {
+    if (engineEnabled) await engineAudio.enableFromUserGesture();
+    else engineAudio.disable();
+  } catch {
+    engineEnabled = false;
+    engineAudio.disable();
   }
-  musicToggle?.setAttribute("aria-pressed", String(musicEnabled));
+  try { localStorage.setItem("racingEngineSound", String(engineEnabled)); } catch { /* Preference persistence is optional. */ }
+  musicToggle?.setAttribute("aria-pressed", String(engineEnabled));
   if (musicToggle) {
-    musicToggle.textContent = musicEnabled ? "Music on" : "Music off";
-    musicToggle.setAttribute("aria-label", musicEnabled ? "Turn race music off" : "Turn race music on");
+    musicToggle.textContent = engineEnabled ? "Engine sound on" : "Engine sound off";
+    musicToggle.setAttribute("aria-label", engineEnabled ? "Turn engine sound off" : "Turn engine sound on");
   }
-  updateMusicState();
+  updateEngineState();
 }
 
 function loadRazorpayCheckout() {
@@ -797,6 +775,8 @@ window.addEventListener("blur", () => {
   keysPressed.right = false;
   recordDirectionChange();
 });
+document.addEventListener("visibilitychange", () => updateEngineState());
+window.addEventListener("pagehide", () => void engineAudio.suspend());
 
 function bindTouchControl(button, direction) {
   if (!button) return;
