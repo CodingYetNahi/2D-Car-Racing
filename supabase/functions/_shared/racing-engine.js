@@ -1,4 +1,4 @@
-export const GAME_VERSION = "2.1.0";
+export const GAME_VERSION = "3.0.0";
 export const TICK_RATE = 60;
 export const TICK_SECONDS = 1 / TICK_RATE;
 export const MAX_VERIFIED_TICKS = TICK_RATE * 60 * 10;
@@ -7,7 +7,7 @@ export const GAME_WIDTH = 480;
 export const GAME_HEIGHT = 720;
 export const ROAD_LEFT = 52;
 export const ROAD_RIGHT = GAME_WIDTH - 52;
-export const LANE_COUNT = 4;
+export const LANE_COUNT = 3;
 
 const PLAYER_WIDTH = 52;
 const PLAYER_HEIGHT = 88;
@@ -34,12 +34,23 @@ function nextRandom(state) {
   return state.rngState / UINT32_RANGE;
 }
 
-function laneBounds(lane) {
+export function laneBounds(lane) {
+  if (!Number.isInteger(lane) || lane < 0 || lane >= LANE_COUNT) throw new RangeError("Invalid lane");
   const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT;
   return {
     left: ROAD_LEFT + lane * laneWidth,
     right: ROAD_LEFT + (lane + 1) * laneWidth
   };
+}
+
+export function laneCenter(lane) {
+  const bounds = laneBounds(lane);
+  return (bounds.left + bounds.right) / 2;
+}
+
+export function clampVehicleToRoad(vehicle) {
+  vehicle.x = Math.max(ROAD_LEFT, Math.min(vehicle.x, ROAD_RIGHT - vehicle.width));
+  return vehicle;
 }
 
 function trafficX(state, lane, carWidth) {
@@ -59,9 +70,7 @@ function wouldBlockRoad(state, candidate) {
 }
 
 function spawnTraffic(state) {
-  const mergeActive = state.roadMode === "two-way" && Math.floor(state.tick / (TICK_RATE * 6)) % 3 === 2;
   const availableLanes = Array.from({ length: LANE_COUNT }, (_, lane) => lane).filter((lane) =>
-    (!mergeActive || lane === 1 || lane === 2) &&
     state.traffic.every((car) => car.lane !== lane || car.y > 170)
   );
   if (availableLanes.length === 0) return;
@@ -75,7 +84,7 @@ function spawnTraffic(state) {
     height: TRAFFIC_HEIGHT,
     speedFactor: 0.88 + nextRandom(state) * 0.24,
     colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length),
-    direction: state.roadMode === "two-way" && lane < 2 ? 1 : 0
+    direction: state.roadMode === "two-way" && lane === 0 ? 1 : 0
   };
 
   if (!wouldBlockRoad(state, candidate)) state.traffic.push(candidate);
@@ -124,11 +133,7 @@ export function stepGame(state, direction = 0) {
   state.playerDirectionBias = state.playerDirectionBias * 0.97 + safeDirection * 0.03;
 
   state.player.x += safeDirection * PLAYER_SPEED_PER_TICK;
-  const mergeActive = state.roadMode === "two-way" && Math.floor(state.tick / (TICK_RATE * 6)) % 3 === 2;
-  const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT;
-  const driveLeft = mergeActive ? ROAD_LEFT + laneWidth : ROAD_LEFT;
-  const driveRight = mergeActive ? ROAD_RIGHT - laneWidth : ROAD_RIGHT;
-  state.player.x = Math.max(driveLeft + 8, Math.min(state.player.x, driveRight - state.player.width - 8));
+  clampVehicleToRoad(state.player);
 
   state.tick += 1;
   const elapsedSeconds = state.tick / TICK_RATE;

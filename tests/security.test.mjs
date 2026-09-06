@@ -147,6 +147,9 @@ test("paid cosmetics expire with the server-checked pass and score submission us
   assert.match(source, /const submittedScore = gameState\.score/);
   assert.match(source, /result\.score !== submittedScore/);
   assert.match(source, /await refreshVerifiedLeaderboard/);
+  assert.match(source, /resolveSelectedSkin\(savedSkin, hasActivePass\)/);
+  assert.match(source, /localStorage\.removeItem\(SKIN_STORAGE_KEY\)/);
+  assert.doesNotMatch(source, /localStorage\.getItem\([^)]*skin[^)]*\)[\s\S]{0,120}activePass\s*=/i);
 });
 
 test("official verification uses the dedicated backend without embedding credentials", async () => {
