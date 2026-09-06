@@ -1,4 +1,4 @@
-export const GAME_VERSION = "3.0.0";
+export const GAME_VERSION = "3.1.0";
 export const TICK_RATE = 60;
 export const TICK_SECONDS = 1 / TICK_RATE;
 export const MAX_VERIFIED_TICKS = TICK_RATE * 60 * 10;
@@ -16,6 +16,8 @@ const TRAFFIC_WIDTH = 50;
 const TRAFFIC_HEIGHT = 84;
 const TRAFFIC_LANE_INSET = 8;
 const TRAFFIC_ROUTE_GAP = 24;
+const TRAFFIC_LANE_CHANGE_SPEED = 1.5;
+const TRAFFIC_LANE_CHANGE_LEAD = 230;
 const UINT32_RANGE = 0x1_0000_0000;
 
 export const TRAFFIC_COLORS = Object.freeze(["#ffc857", "#3dd6d0", "#a78bfa", "#ff7b72", "#f8f9fa"]);
@@ -48,6 +50,12 @@ export function laneCenter(lane) {
   return (bounds.left + bounds.right) / 2;
 }
 
+export function vehicleLane(vehicle) {
+  const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT;
+  const center = Math.max(ROAD_LEFT, Math.min(ROAD_RIGHT - Number.EPSILON, vehicle.x + vehicle.width / 2));
+  return Math.max(0, Math.min(LANE_COUNT - 1, Math.floor((center - ROAD_LEFT) / laneWidth)));
+}
+
 export function clampVehicleToRoad(vehicle) {
   vehicle.x = Math.max(ROAD_LEFT, Math.min(vehicle.x, ROAD_RIGHT - vehicle.width));
   return vehicle;
@@ -60,10 +68,11 @@ function trafficX(state, lane, carWidth) {
   return minX + nextRandom(state) * (maxX - minX);
 }
 
-function wouldBlockRoad(state, candidate) {
+function wouldBlockRoad(state, candidate, ignoredCar = null) {
   const nearbyLanes = new Set([candidate.lane]);
   const safeVerticalGap = candidate.height + state.player.height + TRAFFIC_ROUTE_GAP;
   for (const car of state.traffic) {
+    if (car === ignoredCar) continue;
     if (Math.abs(car.y - candidate.y) < safeVerticalGap) nearbyLanes.add(car.lane);
   }
   return nearbyLanes.size === LANE_COUNT;
@@ -75,7 +84,15 @@ function spawnTraffic(state) {
   );
   if (availableLanes.length === 0) return;
 
-  const lane = availableLanes[Math.floor(nextRandom(state) * availableLanes.length)];
+  let lane = availableLanes[0];
+  for (let offset = 0; offset < LANE_COUNT; offset += 1) {
+    const candidateLane = (state.spawnLaneCursor + offset) % LANE_COUNT;
+    if (availableLanes.includes(candidateLane)) {
+      lane = candidateLane;
+      break;
+    }
+  }
+  state.spawnLaneCursor = (lane + 1) % LANE_COUNT;
   const candidate = {
     lane,
     x: trafficX(state, lane, TRAFFIC_WIDTH),
@@ -83,7 +100,8 @@ function spawnTraffic(state) {
     width: TRAFFIC_WIDTH,
     height: TRAFFIC_HEIGHT,
     speedFactor: 0.88 + nextRandom(state) * 0.24,
-    colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length)
+    colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length),
+    laneChangeReadyTick: state.tick + 45 + Math.floor(nextRandom(state) * 31)
   };
 
   if (!wouldBlockRoad(state, candidate)) state.traffic.push(candidate);
@@ -99,10 +117,11 @@ export function overlaps(a, b) {
 }
 
 export function createGameState(seed) {
+  const normalizedSeed = normalizeSeed(seed);
   return {
     version: GAME_VERSION,
-    seed: normalizeSeed(seed),
-    rngState: normalizeSeed(seed),
+    seed: normalizedSeed,
+    rngState: normalizedSeed,
     tick: 0,
     score: 0,
     crashed: false,
@@ -110,7 +129,7 @@ export function createGameState(seed) {
     roadOffset: 0,
     spawnProgress: 0,
     worldSpeed: 245,
-    playerDirectionBias: 0,
+    spawnLaneCursor: normalizedSeed % LANE_COUNT,
     traffic: [],
     player: {
       x: (GAME_WIDTH - PLAYER_WIDTH) / 2,
@@ -125,10 +144,6 @@ export function createGameState(seed) {
 export function stepGame(state, direction = 0) {
   if (state.crashed || state.capped) return state;
   const safeDirection = direction === -1 || direction === 1 ? direction : 0;
-
-  // A small deterministic moving average lets traffic react to the player's
-  // steering style without collecting or transmitting behavioural data.
-  state.playerDirectionBias = state.playerDirectionBias * 0.97 + safeDirection * 0.03;
 
   state.player.x += safeDirection * PLAYER_SPEED_PER_TICK;
   clampVehicleToRoad(state.player);
@@ -146,16 +161,30 @@ export function stepGame(state, direction = 0) {
   }
 
   for (const car of state.traffic) {
-    const adaptiveDelay = 75 + Math.floor(nextRandom(state) * 45);
-    if (state.tick % adaptiveDelay === 0 && Math.abs(state.playerDirectionBias) > 0.24) {
-      const targetLane = Math.max(0, Math.min(LANE_COUNT - 1, car.lane + Math.sign(state.playerDirectionBias)));
-      if (!state.traffic.some((other) => other !== car && other.lane === targetLane && Math.abs(other.y - car.y) < 125)) {
+    const canStartLaneChange = state.tick >= (car.laneChangeReadyTick || 0) &&
+      car.y >= state.player.y - TRAFFIC_LANE_CHANGE_LEAD &&
+      car.y < state.player.y - car.height;
+    if (canStartLaneChange) {
+      const playerLane = vehicleLane(state.player);
+      let targetLane = car.lane + Math.sign(playerLane - car.lane);
+      if (targetLane === car.lane) {
+        const playerCenter = state.player.x + state.player.width / 2;
+        const changeDirection = playerCenter < laneCenter(car.lane) ? -1 : 1;
+        targetLane = car.lane + changeDirection;
+        if (targetLane < 0 || targetLane >= LANE_COUNT) targetLane = car.lane - changeDirection;
+      }
+      const candidate = { ...car, lane: targetLane };
+      const laneIsClear = !state.traffic.some((other) =>
+        other !== car && other.lane === targetLane && Math.abs(other.y - car.y) < 125
+      );
+      if (targetLane >= 0 && targetLane < LANE_COUNT && laneIsClear && !wouldBlockRoad(state, candidate, car)) {
         car.lane = targetLane;
       }
+      car.laneChangeReadyTick = state.tick + 120 + Math.floor(nextRandom(state) * 61);
     }
     const bounds = laneBounds(car.lane);
     const targetX = (bounds.left + bounds.right - car.width) / 2;
-    car.x += Math.max(-0.7, Math.min(0.7, targetX - car.x));
+    car.x += Math.max(-TRAFFIC_LANE_CHANGE_SPEED, Math.min(TRAFFIC_LANE_CHANGE_SPEED, targetX - car.x));
     car.y += state.worldSpeed * car.speedFactor * TICK_SECONDS;
     if (overlaps(state.player, car)) {
       state.crashed = true;

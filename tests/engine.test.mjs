@@ -15,6 +15,7 @@ import {
   publicRunResult,
   replayGame,
   stepGame,
+  vehicleLane,
   validateReplayEvents
 } from "../supabase/functions/_shared/racing-engine.js";
 
@@ -57,13 +58,9 @@ test("replay events reproduce the browser simulation", () => {
 
 test("known seed can no longer survive indefinitely on the centre divider", () => {
   const state = replayGame(1, [], MAX_VERIFIED_TICKS);
-  assert.deepEqual(publicRunResult(state), {
-    version: GAME_VERSION,
-    tick: 280,
-    score: 46,
-    crashed: true,
-    capped: false
-  });
+  assert.equal(state.crashed, true);
+  assert.equal(state.capped, false);
+  assert.ok(state.tick < MAX_VERIFIED_TICKS);
 });
 
 test("the only road uses exactly three authoritative lanes", () => {
@@ -77,8 +74,59 @@ test("the only road uses exactly three authoritative lanes", () => {
 
   const state = createGameState(42);
   for (let tick = 0; tick < 900 && !state.crashed; tick += 1) stepGame(state, tick < 180 ? -1 : 1);
-  assert.notEqual(state.playerDirectionBias, 0);
   assert.ok(state.traffic.every((car) => Number.isInteger(car.lane) && car.lane >= 0 && car.lane < LANE_COUNT));
+  assert.equal(vehicleLane({ x: ROAD_LEFT - 100, width: 52 }), 0);
+  assert.equal(vehicleLane({ x: ROAD_RIGHT + 100, width: 52 }), 2);
+});
+
+test("traffic rotates through every lane and performs visible lane changes", () => {
+  const coverageState = createGameState(71);
+  coverageState.player.y = GAME_WIDTH * 20;
+  coverageState.player.height = 0;
+  const seenCars = new Set();
+  const spawnLanes = new Set();
+  for (let tick = 0; tick < 900; tick += 1) {
+    stepGame(coverageState, 0);
+    for (const car of coverageState.traffic) {
+      if (!seenCars.has(car)) {
+        seenCars.add(car);
+        spawnLanes.add(car.lane);
+      }
+    }
+  }
+  assert.deepEqual([...spawnLanes].sort(), [0, 1, 2]);
+
+  const state = createGameState(72);
+  const divider = laneBounds(1).left;
+  state.player.x = divider - state.player.width / 2;
+  const car = {
+    lane: 0,
+    x: laneCenter(0) - 25,
+    y: state.player.y - 220,
+    width: 50,
+    height: 84,
+    speedFactor: 1,
+    colorIndex: 0,
+    laneChangeReadyTick: 0
+  };
+  state.traffic = [car];
+  const startingX = car.x;
+  for (let tick = 0; tick < 90 && !state.crashed; tick += 1) stepGame(state, 0);
+  assert.equal(car.lane, 1);
+  assert.ok(car.x > startingX);
+  assert.equal(state.crashed, true);
+});
+
+test("parking on either divider is not an invincibility strategy", () => {
+  for (let dividerIndex = 1; dividerIndex < LANE_COUNT; dividerIndex += 1) {
+    const divider = laneBounds(dividerIndex).left;
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const state = createGameState(seed);
+      state.player.x = divider - state.player.width / 2;
+      while (!state.crashed && !state.capped) stepGame(state, 0);
+      assert.equal(state.crashed, true, `seed ${seed} survived divider ${dividerIndex}`);
+    }
+  }
 });
 
 test("the complete player hitbox remains within legal road bounds", () => {

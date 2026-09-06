@@ -15,7 +15,7 @@ import {
 } from "./supabase/functions/_shared/racing-engine.js";
 import { EngineAudio } from "./engine-audio.js";
 import { SpotifyPlaylistPlayer, normalizeSpotifyPlaylistUrl } from "./spotify-player.js";
-import { DEFAULT_SKIN, SKIN_STORAGE_KEY, isKnownSkin, resolveSelectedSkin } from "./skin-policy.js";
+import { DEFAULT_SKIN, SKIN_PAINTS, SKIN_STORAGE_KEY, isKnownSkin, normalizeServerPass, resolveSelectedSkin } from "./skin-policy.js";
 import { mixHex, weatherState } from "./weather.js";
 
 const canvas = document.getElementById("gameCanvas");
@@ -360,6 +360,7 @@ function selectSkin(skin) {
   selectedSkin = skin;
   try { localStorage.setItem(SKIN_STORAGE_KEY, skin); } catch { /* Cosmetic persistence is optional. */ }
   for (const button of skinButtons) button.setAttribute("aria-pressed", String(button.dataset.skin === skin));
+  draw();
 }
 
 async function refreshPassState() {
@@ -372,7 +373,7 @@ async function refreshPassState() {
 
   try {
     const result = await paymentApi("check-pass", {}, token);
-    activePass = result?.active ? result : null;
+    activePass = normalizeServerPass(result);
     if (!activePass) saveAccessToken("");
   } catch {
     // Keep a still-unexpired, previously server-verified entitlement during a
@@ -504,8 +505,7 @@ function drawCar(car, isPlayer = false) {
   ctx.fillRect(car.width - 1, 12, 5, 20);
   ctx.fillRect(-4, car.height - 31, 5, 20);
   ctx.fillRect(car.width - 1, car.height - 31, 5, 20);
-  const paidPaint = { neon: "#58e88b", sunset: "#ff6f61", royal: "#8d7bff" };
-  ctx.fillStyle = isPlayer && activePass?.active ? paidPaint[selectedSkin] : car.color;
+  ctx.fillStyle = isPlayer && activePass?.active ? SKIN_PAINTS[selectedSkin] : car.color;
   ctx.beginPath();
   ctx.roundRect(0, 0, car.width, car.height, 9);
   ctx.fill();
@@ -716,7 +716,8 @@ async function buyPass(productCode) {
             throw new Error("Payment verification failed.");
           }
           saveAccessToken(verification.accessToken);
-          activePass = verification;
+          activePass = normalizeServerPass(verification);
+          if (!activePass) throw new Error("Payment verification returned an invalid pass.");
           renderPassState();
           resumeAfterVerifiedPayment();
         } catch (error) {
@@ -756,7 +757,8 @@ async function useActivePass() {
     if (!token) throw new Error("No active pass was found.");
     const authorization = await paymentApi("authorize-continue", { runId: activeRunId }, token);
     if (!authorization?.authorized) throw new Error("This pass has expired or is not valid.");
-    activePass = authorization;
+    activePass = normalizeServerPass(authorization);
+    if (!activePass) throw new Error("This pass could not be activated.");
     renderPassState();
     resumeAfterVerifiedPayment();
   } catch (error) {
@@ -798,9 +800,10 @@ window.addEventListener("blur", () => {
   recordDirectionChange();
 });
 document.addEventListener("visibilitychange", () => updateEngineState());
-window.addEventListener("pagehide", () => {
+window.addEventListener("pagehide", (event) => {
   void engineAudio.suspend();
-  spotifyPlayer?.destroy();
+  spotifyPlayer?.pause();
+  if (!event.persisted) spotifyPlayer?.destroy();
 });
 
 function bindTouchControl(button, direction) {

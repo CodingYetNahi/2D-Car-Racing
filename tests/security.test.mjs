@@ -41,6 +41,7 @@ test("game fills the first viewport while help and legal links stay below", asyn
   const paymentCss = await read("payment.css");
   const source = await read("script.js");
   assert.match(css, /\.game-shell[\s\S]*height:\s*100dvh/);
+  assert.match(css, /\.game-shell[\s\S]*min-height:\s*0/);
   assert.match(css, /\.game-shell[\s\S]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto/);
   assert.match(css, /body\.game-page[\s\S]*overflow-y:\s*auto/);
   assert.match(css, /orientation:\s*landscape/);
@@ -49,6 +50,8 @@ test("game fills the first viewport while help and legal links stay below", asyn
   assert.match(css, /#gameCanvas[\s\S]*height:\s*100%/);
   assert.match(css, /\.game-stage[\s\S]*height:\s*min\(100%, 52rem/);
   assert.match(html, /<\/main>[\s\S]*class="below-game"[\s\S]*class="site-footer"/);
+  assert.match(html, /<details class="info-menu">[\s\S]*How to play/);
+  assert.doesNotMatch(html, /Endless highway/i);
   assert.match(paymentCss, /\.age-dialog::backdrop/);
   assert.match(source, /one-way traffic direction/);
   assert.doesNotMatch(source, /two-way|data-road-mode|selectedRoadMode/i);
@@ -142,6 +145,9 @@ test("optional Spotify embed is allowlisted narrowly and remains unprivileged", 
   assert.doesNotMatch(config + player, /client_secret|access_token|Web Playback SDK/i);
   assert.match(player, /hostname !== "open\.spotify\.com"/);
   assert.match(player, /controller\?\.pause\(\)/);
+  assert.match(player, /createController\(this\.container, \{ uri: playlistUri/);
+  assert.match(await read("music-config.js"), /0iT5gTODhpUFGSwqGZUpdG/);
+  assert.match(await read("script.js"), /if \(!event\.persisted\) spotifyPlayer\?\.destroy\(\)/);
 });
 
 test("public payment config points only to the deployed Edge Function", async () => {
