@@ -154,11 +154,28 @@ h1 {
 
 .mode-overlay[hidden] { display: none; }
 .mode-overlay h2 { margin: 0; font-size: 2rem; }
-.mode-options { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
-.mode-options button { padding: .8rem .5rem; border: 1px solid #60717b; border-radius: .65rem; background: #151d22; color: #fff; cursor: pointer; }
-.mode-options button[aria-pressed="true"] { border-color: #58e88b; background: #1f4b2f; }
-.mode-options span { display: block; margin-top: .25rem; color: #b8c2c8; font-size: .65rem; }
 #startGameButton { padding: .85rem; border: 0; border-radius: .6rem; background: #58e88b; color: #06150b; font-weight: 900; cursor: pointer; }
+
+.spotify-panel {
+  width: min(22rem, calc(100vw - 1.5rem));
+  margin: 0 auto 1rem;
+  padding: 0.65rem;
+  border: 1px solid #60717b;
+  border-radius: 0.75rem;
+  background: #10171b;
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 35%);
+}
+
+.spotify-toggle {
+  display: block;
+  margin: 0 auto 0.75rem;
+}
+
+.spotify-panel[hidden] { display: none; }
+.spotify-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; }
+.spotify-panel-heading button { border: 1px solid #60717b; border-radius: 999px; padding: 0.25rem 0.55rem; background: #1c252a; color: #fff; cursor: pointer; }
+.spotify-status { margin: 0; color: #b8c2c8; font-size: 0.75rem; }
+#spotifyEmbed iframe { display: block; width: 100%; border: 0; border-radius: 0.5rem; }
 
 .game-over {
   position: absolute;

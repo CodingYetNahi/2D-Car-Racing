@@ -66,7 +66,7 @@ test("known seed can no longer survive indefinitely on the centre divider", () =
   });
 });
 
-test("all road modes use exactly three authoritative lanes", () => {
+test("the only road uses exactly three authoritative lanes", () => {
   assert.equal(LANE_COUNT, 3);
   const centers = Array.from({ length: LANE_COUNT }, (_, lane) => laneCenter(lane));
   assert.equal(centers.length, 3);
@@ -75,8 +75,7 @@ test("all road modes use exactly three authoritative lanes", () => {
   assert.equal(laneBounds(2).right, ROAD_RIGHT);
   assert.throws(() => laneBounds(3), RangeError);
 
-  const state = createGameState(42, { roadMode: "two-way" });
-  assert.equal(state.roadMode, "two-way");
+  const state = createGameState(42);
   for (let tick = 0; tick < 900 && !state.crashed; tick += 1) stepGame(state, tick < 180 ? -1 : 1);
   assert.notEqual(state.playerDirectionBias, 0);
   assert.ok(state.traffic.every((car) => Number.isInteger(car.lane) && car.lane >= 0 && car.lane < LANE_COUNT));
@@ -110,7 +109,7 @@ test("divider and lane-boundary positions use geometric collision detection", ()
 test("rapid steering cannot tunnel through overlapping traffic", () => {
   const state = createGameState(19);
   state.player.x = laneCenter(0) - state.player.width / 2;
-  state.traffic = [{ lane: 1, x: laneCenter(1) - 25, y: state.player.y, width: 50, height: 84, speedFactor: 0, colorIndex: 0, direction: 0 }];
+  state.traffic = [{ lane: 1, x: laneCenter(1) - 25, y: state.player.y, width: 50, height: 84, speedFactor: 0, colorIndex: 0 }];
   for (let tick = 0; tick < 60 && !state.crashed; tick += 1) stepGame(state, 1);
   assert.equal(state.crashed, true);
 });

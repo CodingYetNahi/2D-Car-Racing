@@ -14,6 +14,7 @@ import {
   stepGame
 } from "./supabase/functions/_shared/racing-engine.js";
 import { EngineAudio } from "./engine-audio.js";
+import { SpotifyPlaylistPlayer, normalizeSpotifyPlaylistUrl } from "./spotify-player.js";
 import { DEFAULT_SKIN, SKIN_STORAGE_KEY, isKnownSkin, resolveSelectedSkin } from "./skin-policy.js";
 import { mixHex, weatherState } from "./weather.js";
 
@@ -50,11 +51,15 @@ const rightButton = document.getElementById("moveRight");
 const verificationStatusElement = document.getElementById("verificationStatus");
 const verifiedLeaderboardElement = document.getElementById("verifiedLeaderboard");
 const musicToggle = document.getElementById("musicToggle");
+const spotifyToggle = document.getElementById("spotifyToggle");
+const spotifyPanel = document.getElementById("spotifyPanel");
+const spotifyClose = document.getElementById("spotifyClose");
+const spotifyStatus = document.getElementById("spotifyStatus");
+const spotifyEmbed = document.getElementById("spotifyEmbed");
 const garageElement = document.getElementById("garage");
 const skinButtons = [...document.querySelectorAll(".skin-button")];
 const modeOverlay = document.getElementById("modeOverlay");
 const startGameButton = document.getElementById("startGameButton");
-const modeButtons = [...document.querySelectorAll("[data-road-mode]")];
 
 const PAYMENT_API_BASE = String(window.RACING_PAYMENT_API_BASE || "").replace(/\/$/, "");
 const VERIFICATION_API_BASE = String(window.RACING_VERIFICATION_API_BASE || "").replace(/\/$/, "");
@@ -83,7 +88,12 @@ let resetSequence = 0;
 let selectedSkin = DEFAULT_SKIN;
 let engineEnabled = false;
 const engineAudio = new EngineAudio();
-let selectedRoadMode = "one-way";
+const spotifyPlaylistUrl = normalizeSpotifyPlaylistUrl(window.RACING_SPOTIFY_PLAYLIST_URL);
+const spotifyPlayer = spotifyEmbed ? new SpotifyPlaylistPlayer({
+  container: spotifyEmbed,
+  statusElement: spotifyStatus,
+  onPlaybackChange: (isPlaying) => engineAudio.setMixLevel(isPlaying ? 0.35 : 1)
+}) : null;
 
 function readBestScore() {
   try {
@@ -427,21 +437,18 @@ async function resetGame() {
   void refreshPassState();
 
   try {
-    const preparedRun = selectedRoadMode === "one-way" ? await prepareVerifiedRun() : null;
+    const preparedRun = await prepareVerifiedRun();
     if (currentReset !== resetSequence) return;
     if (preparedRun) {
       verifiedRunContext = preparedRun;
       seed = preparedRun.seed;
-    }
-    if (selectedRoadMode === "two-way") {
-      setVerificationStatus("Two-way mode uses adaptive local traffic. Choose one-way mode for an official verified score.");
     }
   } catch (error) {
     if (currentReset !== resetSequence) return;
     setVerificationStatus(`${error.message || "Official verification is unavailable."} Local play continues.`);
   }
 
-  gameState = createGameState(seed, { roadMode: selectedRoadMode });
+  gameState = createGameState(seed);
   startServerRun();
   running = true;
   lastTime = performance.now();
@@ -479,10 +486,6 @@ function drawRoad() {
     for (let y = -100 + gameState.roadOffset; y < GAME_HEIGHT; y += 100) ctx.fillRect(x, y, 6, 55);
   }
 
-  if (gameState.roadMode === "two-way") {
-    ctx.fillStyle = "#ffd34e";
-    ctx.fillRect(ROAD_LEFT + laneWidth - 3, 0, 6, GAME_HEIGHT);
-  }
   drawPrecipitation(weather.current.precipitation, 1 - weather.mix);
   drawPrecipitation(weather.next.precipitation, weather.mix);
 
@@ -516,8 +519,7 @@ function drawCar(car, isPlayer = false) {
   ctx.fill();
   ctx.fillStyle = "#17242a";
   ctx.fillRect(8, 48, car.width - 16, 18);
-  // The player travels up the road; opposing traffic travels down it.
-  // Headlights and tail lights make that direction clear in both orientations.
+  // Headlights and tail lights make the one-way traffic direction clear.
   ctx.fillStyle = "#fff4a8";
   const frontLightY = isPlayer ? 3 : car.height - 7;
   ctx.fillRect(5, frontLightY, 10, 4);
@@ -628,6 +630,26 @@ async function toggleMusic() {
     musicToggle.setAttribute("aria-label", engineEnabled ? "Turn engine sound off" : "Turn engine sound on");
   }
   updateEngineState();
+}
+
+async function openSpotifyPanel() {
+  if (!spotifyPanel || !spotifyPlayer) return;
+  spotifyPanel.hidden = false;
+  spotifyToggle?.setAttribute("aria-expanded", "true");
+  spotifyPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  await spotifyPlayer.initialize(spotifyPlaylistUrl);
+}
+
+function closeSpotifyPanel() {
+  spotifyPlayer?.pause();
+  if (spotifyPanel) spotifyPanel.hidden = true;
+  spotifyToggle?.setAttribute("aria-expanded", "false");
+  spotifyToggle?.focus();
+}
+
+function toggleSpotifyPanel() {
+  if (!spotifyPanel || spotifyPanel.hidden) void openSpotifyPanel();
+  else closeSpotifyPanel();
 }
 
 function loadRazorpayCheckout() {
@@ -776,7 +798,10 @@ window.addEventListener("blur", () => {
   recordDirectionChange();
 });
 document.addEventListener("visibilitychange", () => updateEngineState());
-window.addEventListener("pagehide", () => void engineAudio.suspend());
+window.addEventListener("pagehide", () => {
+  void engineAudio.suspend();
+  spotifyPlayer?.destroy();
+});
 
 function bindTouchControl(button, direction) {
   if (!button) return;
@@ -820,14 +845,12 @@ declineAdultButton?.addEventListener("click", (event) => {
 usePassButton?.addEventListener("click", useActivePass);
 restartButton?.addEventListener("click", () => void resetGame());
 musicToggle?.addEventListener("click", () => void toggleMusic());
+spotifyToggle?.addEventListener("click", toggleSpotifyPanel);
+spotifyClose?.addEventListener("click", closeSpotifyPanel);
 for (const button of skinButtons) button.addEventListener("click", () => selectSkin(button.dataset.skin || ""));
 
 document.addEventListener("contextmenu", (event) => {
   event.preventDefault();
-});
-for (const button of modeButtons) button.addEventListener("click", () => {
-  selectedRoadMode = button.dataset.roadMode === "two-way" ? "two-way" : "one-way";
-  for (const option of modeButtons) option.setAttribute("aria-pressed", String(option === button));
 });
 startGameButton?.addEventListener("click", () => {
   if (modeOverlay) modeOverlay.hidden = true;

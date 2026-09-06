@@ -50,7 +50,8 @@ test("game fills the first viewport while help and legal links stay below", asyn
   assert.match(css, /\.game-stage[\s\S]*height:\s*min\(100%, 52rem/);
   assert.match(html, /<\/main>[\s\S]*class="below-game"[\s\S]*class="site-footer"/);
   assert.match(paymentCss, /\.age-dialog::backdrop/);
-  assert.match(source, /opposing traffic travels down/);
+  assert.match(source, /one-way traffic direction/);
+  assert.doesNotMatch(source, /two-way|data-road-mode|selectedRoadMode/i);
 });
 
 test("SEO has canonical metadata, crawl controls and structured game data", async () => {
@@ -130,6 +131,17 @@ test("frontend keeps strong browser controls and avoids common code sinks", asyn
   assert.doesNotMatch(source, /innerHTML|outerHTML|document\.write|\beval\s*\(|new Function/);
   assert.match(source, /addEventListener\("contextmenu"/);
   assert.match(await read("style.css"), /-webkit-touch-callout:\s*none/);
+});
+
+test("optional Spotify embed is allowlisted narrowly and remains unprivileged", async () => {
+  const html = await read("index.html");
+  const config = await read("music-config.js");
+  const player = await read("spotify-player.js");
+  assert.match(html, /script-src[^;]*https:\/\/open\.spotify\.com/);
+  assert.match(html, /frame-src[^;]*https:\/\/open\.spotify\.com/);
+  assert.doesNotMatch(config + player, /client_secret|access_token|Web Playback SDK/i);
+  assert.match(player, /hostname !== "open\.spotify\.com"/);
+  assert.match(player, /controller\?\.pause\(\)/);
 });
 
 test("public payment config points only to the deployed Edge Function", async () => {

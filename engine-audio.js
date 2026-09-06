@@ -6,6 +6,7 @@ export class EngineAudio {
     this.oscillators = [];
     this.enabled = false;
     this.running = false;
+    this.mixLevel = 1;
   }
 
   async enableFromUserGesture() {
@@ -31,6 +32,12 @@ export class EngineAudio {
     const now = this.context.currentTime;
     this.oscillators[0].frequency.setTargetAtTime(54 + normalized * 18, now, 0.12);
     this.oscillators[1].frequency.setTargetAtTime(108 + normalized * 36, now, 0.12);
+  }
+
+  setMixLevel(level) {
+    const numericLevel = Number(level);
+    this.mixLevel = Number.isFinite(numericLevel) ? Math.max(0.2, Math.min(1, numericLevel)) : 1;
+    this.#applyGain();
   }
 
   suspend() {
@@ -62,6 +69,6 @@ export class EngineAudio {
 
   #applyGain() {
     if (!this.master || !this.context) return;
-    this.master.gain.setTargetAtTime(this.enabled && this.running ? 0.65 : 0, this.context.currentTime, 0.08);
+    this.master.gain.setTargetAtTime(this.enabled && this.running ? 0.65 * this.mixLevel : 0, this.context.currentTime, 0.08);
   }
 }

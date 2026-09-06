@@ -83,8 +83,7 @@ function spawnTraffic(state) {
     width: TRAFFIC_WIDTH,
     height: TRAFFIC_HEIGHT,
     speedFactor: 0.88 + nextRandom(state) * 0.24,
-    colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length),
-    direction: state.roadMode === "two-way" && lane === 0 ? 1 : 0
+    colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length)
   };
 
   if (!wouldBlockRoad(state, candidate)) state.traffic.push(candidate);
@@ -99,7 +98,7 @@ export function overlaps(a, b) {
     a.y + a.height - paddingY > b.y + paddingY;
 }
 
-export function createGameState(seed, options = {}) {
+export function createGameState(seed) {
   return {
     version: GAME_VERSION,
     seed: normalizeSeed(seed),
@@ -111,7 +110,6 @@ export function createGameState(seed, options = {}) {
     roadOffset: 0,
     spawnProgress: 0,
     worldSpeed: 245,
-    roadMode: options.roadMode === "two-way" ? "two-way" : "one-way",
     playerDirectionBias: 0,
     traffic: [],
     player: {
@@ -158,8 +156,7 @@ export function stepGame(state, direction = 0) {
     const bounds = laneBounds(car.lane);
     const targetX = (bounds.left + bounds.right - car.width) / 2;
     car.x += Math.max(-0.7, Math.min(0.7, targetX - car.x));
-    const directionBoost = state.roadMode === "two-way" && car.direction ? 1.45 : 1;
-    car.y += state.worldSpeed * car.speedFactor * directionBoost * TICK_SECONDS;
+    car.y += state.worldSpeed * car.speedFactor * TICK_SECONDS;
     if (overlaps(state.player, car)) {
       state.crashed = true;
       break;

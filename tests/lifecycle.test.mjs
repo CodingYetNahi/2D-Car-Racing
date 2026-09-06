@@ -44,6 +44,8 @@ test("engine audio creates one reusable graph across pause, crash and restart", 
   await audio.enableFromUserGesture();
   audio.setRunning(true);
   audio.setSpeed(470);
+  audio.setMixLevel(0.35);
+  assert.equal(audio.mixLevel, 0.35);
   audio.setRunning(false);
   audio.setRunning(true);
   await audio.enableFromUserGesture();
