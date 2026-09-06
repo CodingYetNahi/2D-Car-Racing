@@ -8,6 +8,10 @@ The game now has an optional Supabase-backed official-score path. A server issue
 
 Local play remains available if verification is unavailable. Paid continuation scores are submitted from an immutable crash snapshot, so completing Checkout cannot invalidate a score while server verification is in flight. See [VERIFIED_RUN_SETUP.md](./VERIFIED_RUN_SETUP.md).
 
+## Optional Spotify music
+
+The game supports one user-initiated Spotify playlist through Spotify's official Embed API. Set a public `https://open.spotify.com/playlist/...` URL in `music-config.js`. Leave it blank to keep Spotify disabled; the engine sound and game continue normally. No Spotify login, secret, access token, or Web Playback SDK is used.
+
 ## Fixed access passes
 
 Payment processing is connected to the deployed backend. Checkout availability remains controlled server-side with `PAYMENTS_ENABLED`; use Razorpay test mode until the production-readiness checklist is complete. The model uses a fixed ₹29 one-day pass and ₹99 one-week pass. Both are non-renewing access fees with no wager, prize, cash-out or redeemable value. Players can always restart free. An active pass also unlocks cosmetic cars only for that pass's duration.

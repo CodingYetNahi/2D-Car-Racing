@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-muz2nZSa/BpoJc0ZjeZHxGAXj9HpsyypqvTUbxKmpH8=' https://checkout.razorpay.com; style-src 'self'; img-src 'self' data: https://*.razorpay.com; font-src 'self'; connect-src 'self' https://*.supabase.co https://*.razorpay.com; frame-src https://*.razorpay.com; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-muz2nZSa/BpoJc0ZjeZHxGAXj9HpsyypqvTUbxKmpH8=' https://checkout.razorpay.com https://open.spotify.com; style-src 'self'; img-src 'self' data: https://*.razorpay.com; font-src 'self'; connect-src 'self' https://*.supabase.co https://*.razorpay.com; frame-src https://*.razorpay.com https://open.spotify.com; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="theme-color" content="#101418">
   <meta name="description" content="Play a fast, 2D car racing game online. Dodge traffic, beat your best score and race on mobile or desktop—no download needed.">
@@ -47,12 +47,8 @@
       </canvas>
 
       <div id="modeOverlay" class="mode-overlay">
-        <p class="eyebrow">Choose your road</p>
+        <p class="eyebrow">Three-lane highway</p>
         <h2>Ready to drive?</h2>
-        <div class="mode-options" role="group" aria-label="Road direction">
-          <button type="button" data-road-mode="one-way" aria-pressed="true"><strong>One way</strong><span>Classic three-lane highway</span></button>
-          <button type="button" data-road-mode="two-way" aria-pressed="false"><strong>Two way</strong><span>Adaptive three-lane traffic</span></button>
-        </div>
         <button id="startGameButton" type="button">Start race</button>
       </div>
 
@@ -97,6 +93,16 @@
   </main>
 
   <section class="below-game" aria-label="Game information and legal links">
+    <button id="spotifyToggle" class="music-toggle spotify-toggle" type="button" aria-expanded="false" aria-controls="spotifyPanel">Music</button>
+    <section id="spotifyPanel" class="spotify-panel" aria-label="Optional Spotify music" hidden>
+      <div class="spotify-panel-heading">
+        <strong>Spotify music</strong>
+        <button id="spotifyClose" type="button" aria-label="Close Spotify music">Close</button>
+      </div>
+      <p id="spotifyStatus" class="spotify-status" role="status" aria-live="polite"></p>
+      <div id="spotifyEmbed"></div>
+    </section>
+
     <p class="help-text">
       Play this online racing game with <kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd>.
       On mobile, hold the arrows to dodge traffic.
@@ -138,6 +144,7 @@
 
   <script src="./payment-config.js"></script>
   <script src="./game-config.js"></script>
+  <script src="./music-config.js"></script>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
