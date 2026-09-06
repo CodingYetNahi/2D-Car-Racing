@@ -15,6 +15,7 @@ test("Spotify accepts only canonical public playlist URLs", () => {
 test("Spotify creates one controller and pauses cleanly", async () => {
   let createCount = 0;
   let pauseCount = 0;
+  let controllerOptions = null;
   const listeners = new Map();
   const controller = {
     addListener(name, callback) { listeners.set(name, callback); },
@@ -22,8 +23,9 @@ test("Spotify creates one controller and pauses cleanly", async () => {
     destroy() {}
   };
   const loadApi = async () => ({
-    createController(_container, _options, callback) {
+    createController(_container, options, callback) {
       createCount += 1;
+      controllerOptions = options;
       callback(controller);
     }
   });
@@ -37,6 +39,8 @@ test("Spotify creates one controller and pauses cleanly", async () => {
   await Promise.all([player.initialize(url), player.initialize(url)]);
   await player.initialize(url);
   assert.equal(createCount, 1);
+  assert.equal(controllerOptions.uri, "spotify:playlist:37i9dQZF1DX4WYpdgoIcn6");
+  assert.equal("url" in controllerOptions, false);
   listeners.get("playback_started")({ data: {} });
   listeners.get("playback_update")({ data: { isPaused: true } });
   player.pause();

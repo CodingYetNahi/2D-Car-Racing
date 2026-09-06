@@ -43,7 +43,7 @@ button {
 .game-shell {
   width: min(100%, 36rem);
   height: 100dvh;
-  min-height: 32rem;
+  min-height: 0;
   margin: 0 auto;
   padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem max(1rem, env(safe-area-inset-bottom));
   display: grid;
@@ -57,6 +57,10 @@ button {
   align-items: end;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.game-header > div:first-child {
+  min-width: 0;
 }
 
 .music-toggle {
@@ -168,7 +172,7 @@ h1 {
 
 .spotify-toggle {
   display: block;
-  margin: 0 auto 0.75rem;
+  margin: 0 auto;
 }
 
 .spotify-panel[hidden] { display: none; }
@@ -251,6 +255,7 @@ h1 {
 
 .skin-options {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 0.35rem;
   margin-top: 0.3rem;
@@ -302,10 +307,34 @@ h1 {
   width: min(100%, 48rem);
   margin: 0 auto;
   padding: 1.25rem 1rem max(1.5rem, env(safe-area-inset-bottom));
+  display: grid;
+  gap: 0.65rem;
+}
+
+.info-menu {
+  border: 1px solid #41505a;
+  border-radius: 0.7rem;
+  background: rgb(8 12 15 / 78%);
+}
+
+.info-menu > summary {
+  padding: 0.75rem 0.9rem;
+  color: #f7f9fa;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.info-menu[open] > summary {
+  border-bottom: 1px solid #41505a;
+}
+
+.info-menu .help-text {
+  padding: 0.9rem;
 }
 
 .leaderboard-card {
-  margin-top: 1.25rem;
+  margin: 0;
   padding: 1rem;
   border: 1px solid #41505a;
   border-radius: 0.8rem;
@@ -395,6 +424,25 @@ kbd {
   }
 }
 
+@media (max-width: 560px) {
+  .game-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.4rem 0.65rem;
+  }
+
+  .scoreboard {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .scoreboard p {
+    min-width: 0;
+  }
+}
+
 @media (max-height: 650px) and (orientation: landscape) {
   .game-shell {
     width: min(100%, 52rem);
@@ -426,6 +474,11 @@ kbd {
   .game-shell {
     gap: 0.35rem;
     padding-block: max(0.35rem, env(safe-area-inset-top)) max(0.35rem, env(safe-area-inset-bottom));
+  }
+
+  .game-over {
+    place-content: start stretch;
+    padding: 0.75rem;
   }
 
 }

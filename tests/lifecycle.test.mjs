@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { EngineAudio } from "../engine-audio.js";
-import { DEFAULT_SKIN, resolveSelectedSkin } from "../skin-policy.js";
+import { DEFAULT_SKIN, SKIN_PAINTS, normalizeServerPass, resolveSelectedSkin } from "../skin-policy.js";
 import { weatherState } from "../weather.js";
 
 test("weather transitions are continuous and frame-rate independent", () => {
@@ -22,6 +22,15 @@ test("saved skins require a freshly server-verified pass", () => {
   assert.equal(resolveSelectedSkin("royal", false), DEFAULT_SKIN);
   assert.equal(resolveSelectedSkin("../../forged", true), DEFAULT_SKIN);
   assert.equal(resolveSelectedSkin(null, true), DEFAULT_SKIN);
+});
+
+test("all server-authorized pass responses activate and paint the selected skin", () => {
+  const expiresAt = "2099-01-01T00:00:00.000Z";
+  assert.equal(normalizeServerPass({ active: true, expiresAt })?.active, true);
+  assert.equal(normalizeServerPass({ verified: true, expiresAt })?.active, true);
+  assert.equal(normalizeServerPass({ authorized: true, expiresAt })?.active, true);
+  assert.equal(normalizeServerPass({ authorized: false, expiresAt }), null);
+  assert.equal(SKIN_PAINTS[resolveSelectedSkin("sunset", true)], "#ff6f61");
 });
 
 function fakeAudioContext() {

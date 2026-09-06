@@ -10,7 +10,7 @@ Local play remains available if verification is unavailable. Paid continuation s
 
 ## Optional Spotify music
 
-The game supports one user-initiated Spotify playlist through Spotify's official Embed API. Set a public `https://open.spotify.com/playlist/...` URL in `music-config.js`. Leave it blank to keep Spotify disabled; the engine sound and game continue normally. No Spotify login, secret, access token, or Web Playback SDK is used.
+The game supports the configured public playlist through Spotify's official Embed API. The player is created only after the user opens Music, playback still requires the user's action, and the engine sound and game continue normally if Spotify is blocked. No Spotify login, secret, access token, or Web Playback SDK is used.
 
 ## Fixed access passes
 

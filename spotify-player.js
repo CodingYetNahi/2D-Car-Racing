@@ -62,9 +62,11 @@ export class SpotifyPlaylistPlayer {
     if (this.initializing) return this.initializing;
 
     this.setStatus("Loading Spotify…");
+    const playlistId = new URL(playlistUrl).pathname.split("/").at(-1);
+    const playlistUri = `spotify:playlist:${playlistId}`;
     this.initializing = this.loadApi()
       .then((IFrameAPI) => new Promise((resolve) => {
-        IFrameAPI.createController(this.container, { url: playlistUrl, width: "100%", height: 152 }, (controller) => {
+        IFrameAPI.createController(this.container, { uri: playlistUri, width: "100%", height: 152 }, (controller) => {
           this.controller = controller;
           controller.addListener("ready", () => this.setStatus("Press Play in Spotify to start music."));
           controller.addListener("playback_started", () => this.onPlaybackChange(true));
