@@ -140,12 +140,13 @@ test("optional Spotify embed is allowlisted narrowly and remains unprivileged", 
   const html = await read("index.html");
   const config = await read("music-config.js");
   const player = await read("spotify-player.js");
-  assert.match(html, /script-src[^;]*https:\/\/open\.spotify\.com/);
+  assert.doesNotMatch(html, /script-src[^;]*https:\/\/open\.spotify\.com/);
   assert.match(html, /frame-src[^;]*https:\/\/open\.spotify\.com/);
   assert.doesNotMatch(config + player, /client_secret|access_token|Web Playback SDK/i);
   assert.match(player, /hostname !== "open\.spotify\.com"/);
-  assert.match(player, /controller\?\.pause\(\)/);
-  assert.match(player, /createController\(this\.container, \{ uri: playlistUri/);
+  assert.doesNotMatch(player, /iframe-api|createController/);
+  assert.match(player, /replaceChildren\(iframe\)/);
+  assert.match(player, /open\.spotify\.com\/embed\/playlist/);
   assert.match(await read("music-config.js"), /0iT5gTODhpUFGSwqGZUpdG/);
   assert.match(await read("script.js"), /if \(!event\.persisted\) spotifyPlayer\?\.destroy\(\)/);
 });

@@ -1,4 +1,4 @@
-export const GAME_VERSION = "3.1.0";
+export const GAME_VERSION = "3.2.0";
 export const TICK_RATE = 60;
 export const TICK_SECONDS = 1 / TICK_RATE;
 export const MAX_VERIFIED_TICKS = TICK_RATE * 60 * 10;
@@ -14,10 +14,9 @@ const PLAYER_HEIGHT = 88;
 const PLAYER_SPEED_PER_TICK = 310 / TICK_RATE;
 const TRAFFIC_WIDTH = 50;
 const TRAFFIC_HEIGHT = 84;
-const TRAFFIC_LANE_INSET = 8;
 const TRAFFIC_ROUTE_GAP = 24;
-const TRAFFIC_LANE_CHANGE_SPEED = 1.5;
-const TRAFFIC_LANE_CHANGE_LEAD = 230;
+const TRAFFIC_LANE_CHANGE_SPEED = 1.15;
+const TRAFFIC_LANE_CHANGE_CHANCE = 0.35;
 const UINT32_RANGE = 0x1_0000_0000;
 
 export const TRAFFIC_COLORS = Object.freeze(["#ffc857", "#3dd6d0", "#a78bfa", "#ff7b72", "#f8f9fa"]);
@@ -50,22 +49,14 @@ export function laneCenter(lane) {
   return (bounds.left + bounds.right) / 2;
 }
 
-export function vehicleLane(vehicle) {
-  const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT;
-  const center = Math.max(ROAD_LEFT, Math.min(ROAD_RIGHT - Number.EPSILON, vehicle.x + vehicle.width / 2));
-  return Math.max(0, Math.min(LANE_COUNT - 1, Math.floor((center - ROAD_LEFT) / laneWidth)));
-}
-
 export function clampVehicleToRoad(vehicle) {
   vehicle.x = Math.max(ROAD_LEFT, Math.min(vehicle.x, ROAD_RIGHT - vehicle.width));
   return vehicle;
 }
 
-function trafficX(state, lane, carWidth) {
+function trafficX(lane, carWidth) {
   const bounds = laneBounds(lane);
-  const minX = Math.max(ROAD_LEFT, bounds.left + TRAFFIC_LANE_INSET);
-  const maxX = Math.min(ROAD_RIGHT - carWidth, bounds.right - carWidth - TRAFFIC_LANE_INSET);
-  return minX + nextRandom(state) * (maxX - minX);
+  return (bounds.left + bounds.right - carWidth) / 2;
 }
 
 function wouldBlockRoad(state, candidate, ignoredCar = null) {
@@ -95,13 +86,17 @@ function spawnTraffic(state) {
   state.spawnLaneCursor = (lane + 1) % LANE_COUNT;
   const candidate = {
     lane,
-    x: trafficX(state, lane, TRAFFIC_WIDTH),
+    x: trafficX(lane, TRAFFIC_WIDTH),
     y: -TRAFFIC_HEIGHT - 10,
     width: TRAFFIC_WIDTH,
     height: TRAFFIC_HEIGHT,
     speedFactor: 0.88 + nextRandom(state) * 0.24,
     colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length),
-    laneChangeReadyTick: state.tick + 45 + Math.floor(nextRandom(state) * 31)
+    laneChangeDirection: nextRandom(state) < TRAFFIC_LANE_CHANGE_CHANCE
+      ? (lane === 0 ? 1 : lane === LANE_COUNT - 1 ? -1 : nextRandom(state) < 0.5 ? -1 : 1)
+      : 0,
+    laneChangeY: 70 + nextRandom(state) * 300,
+    laneChangeAttempted: false
   };
 
   if (!wouldBlockRoad(state, candidate)) state.traffic.push(candidate);
@@ -161,18 +156,10 @@ export function stepGame(state, direction = 0) {
   }
 
   for (const car of state.traffic) {
-    const canStartLaneChange = state.tick >= (car.laneChangeReadyTick || 0) &&
-      car.y >= state.player.y - TRAFFIC_LANE_CHANGE_LEAD &&
-      car.y < state.player.y - car.height;
+    const canStartLaneChange = !car.laneChangeAttempted &&
+      car.laneChangeDirection !== 0 && car.y >= car.laneChangeY;
     if (canStartLaneChange) {
-      const playerLane = vehicleLane(state.player);
-      let targetLane = car.lane + Math.sign(playerLane - car.lane);
-      if (targetLane === car.lane) {
-        const playerCenter = state.player.x + state.player.width / 2;
-        const changeDirection = playerCenter < laneCenter(car.lane) ? -1 : 1;
-        targetLane = car.lane + changeDirection;
-        if (targetLane < 0 || targetLane >= LANE_COUNT) targetLane = car.lane - changeDirection;
-      }
+      const targetLane = car.lane + car.laneChangeDirection;
       const candidate = { ...car, lane: targetLane };
       const laneIsClear = !state.traffic.some((other) =>
         other !== car && other.lane === targetLane && Math.abs(other.y - car.y) < 125
@@ -180,7 +167,7 @@ export function stepGame(state, direction = 0) {
       if (targetLane >= 0 && targetLane < LANE_COUNT && laneIsClear && !wouldBlockRoad(state, candidate, car)) {
         car.lane = targetLane;
       }
-      car.laneChangeReadyTick = state.tick + 120 + Math.floor(nextRandom(state) * 61);
+      car.laneChangeAttempted = true;
     }
     const bounds = laneBounds(car.lane);
     const targetX = (bounds.left + bounds.right - car.width) / 2;

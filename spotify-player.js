@@ -1,6 +1,3 @@
-const SPOTIFY_API_SRC = "https://open.spotify.com/embed/iframe-api/v1";
-let apiPromise = null;
-
 export function normalizeSpotifyPlaylistUrl(value) {
   try {
     const url = new URL(String(value || ""));
@@ -12,40 +9,20 @@ export function normalizeSpotifyPlaylistUrl(value) {
   }
 }
 
-export function loadSpotifyIframeApi(documentObject = globalThis.document, windowObject = globalThis.window) {
-  if (apiPromise) return apiPromise;
-  apiPromise = new Promise((resolve, reject) => {
-    const script = documentObject.createElement("script");
-    const fail = (message) => {
-      script.remove();
-      apiPromise = null;
-      reject(new Error(message));
-    };
-    const timeoutId = windowObject.setTimeout(() => fail("Spotify took too long to load."), 10000);
-    windowObject.onSpotifyIframeApiReady = (IFrameAPI) => {
-      windowObject.clearTimeout(timeoutId);
-      resolve(IFrameAPI);
-    };
-    script.src = SPOTIFY_API_SRC;
-    script.async = true;
-    script.dataset.spotifyIframeApi = "true";
-    script.onerror = () => {
-      windowObject.clearTimeout(timeoutId);
-      fail("Spotify could not be loaded.");
-    };
-    documentObject.head.appendChild(script);
-  });
-  return apiPromise;
+export function spotifyEmbedUrl(value) {
+  const playlistUrl = normalizeSpotifyPlaylistUrl(value);
+  if (!playlistUrl) return "";
+  const playlistId = new URL(playlistUrl).pathname.split("/").at(-1);
+  return `https://open.spotify.com/embed/playlist/${playlistId}`;
 }
 
 export class SpotifyPlaylistPlayer {
-  constructor({ container, statusElement = null, onPlaybackChange = () => {}, loadApi = loadSpotifyIframeApi }) {
+  constructor({ container, statusElement = null, documentObject = globalThis.document, onPlaybackChange = () => {} }) {
     this.container = container;
     this.statusElement = statusElement;
+    this.documentObject = documentObject;
     this.onPlaybackChange = onPlaybackChange;
-    this.loadApi = loadApi;
-    this.controller = null;
-    this.initializing = null;
+    this.iframe = null;
   }
 
   setStatus(message) {
@@ -53,43 +30,39 @@ export class SpotifyPlaylistPlayer {
   }
 
   async initialize(rawPlaylistUrl) {
-    const playlistUrl = normalizeSpotifyPlaylistUrl(rawPlaylistUrl);
-    if (!playlistUrl) {
+    const embedUrl = spotifyEmbedUrl(rawPlaylistUrl);
+    if (!embedUrl) {
       this.setStatus("Spotify playlist is not configured yet.");
       return false;
     }
-    if (this.controller) return true;
-    if (this.initializing) return this.initializing;
+    if (this.iframe) return true;
 
+    const iframe = this.documentObject.createElement("iframe");
+    iframe.src = embedUrl;
+    iframe.title = "Spotify playlist";
+    iframe.width = "100%";
+    iframe.height = "152";
+    iframe.loading = "eager";
+    iframe.allow = "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture";
+    iframe.referrerPolicy = "strict-origin-when-cross-origin";
+    iframe.setAttribute("allowfullscreen", "");
+    iframe.addEventListener("load", () => this.setStatus("Press Play in Spotify to start music."), { once: true });
+    iframe.addEventListener("error", () => this.setStatus("Spotify could not be loaded. The game is still available."), { once: true });
     this.setStatus("Loading Spotify…");
-    const playlistId = new URL(playlistUrl).pathname.split("/").at(-1);
-    const playlistUri = `spotify:playlist:${playlistId}`;
-    this.initializing = this.loadApi()
-      .then((IFrameAPI) => new Promise((resolve) => {
-        IFrameAPI.createController(this.container, { uri: playlistUri, width: "100%", height: 152 }, (controller) => {
-          this.controller = controller;
-          controller.addListener("ready", () => this.setStatus("Press Play in Spotify to start music."));
-          controller.addListener("playback_started", () => this.onPlaybackChange(true));
-          controller.addListener("playback_update", (event) => this.onPlaybackChange(!event?.data?.isPaused));
-          resolve(true);
-        });
-      }))
-      .catch((error) => {
-        this.setStatus(error?.message || "Spotify could not be loaded.");
-        return false;
-      })
-      .finally(() => { this.initializing = null; });
-    return this.initializing;
+    this.container.replaceChildren(iframe);
+    this.iframe = iframe;
+    return true;
   }
 
   pause() {
-    this.controller?.pause();
+    // Direct embeds do not expose reliable playback-state or pause events.
+    // Closing the panel calls destroy(), which stops playback with the iframe.
     this.onPlaybackChange(false);
   }
 
   destroy() {
-    this.controller?.destroy();
-    this.controller = null;
+    this.iframe?.remove();
+    this.iframe = null;
     this.onPlaybackChange(false);
   }
 }
