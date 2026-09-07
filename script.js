@@ -641,7 +641,7 @@ async function openSpotifyPanel() {
 }
 
 function closeSpotifyPanel() {
-  spotifyPlayer?.pause();
+  spotifyPlayer?.destroy();
   if (spotifyPanel) spotifyPanel.hidden = true;
   spotifyToggle?.setAttribute("aria-expanded", "false");
   spotifyToggle?.focus();
@@ -802,7 +802,6 @@ window.addEventListener("blur", () => {
 document.addEventListener("visibilitychange", () => updateEngineState());
 window.addEventListener("pagehide", (event) => {
   void engineAudio.suspend();
-  spotifyPlayer?.pause();
   if (!event.persisted) spotifyPlayer?.destroy();
 });
 
