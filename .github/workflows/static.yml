@@ -33,14 +33,16 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Setup Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - name: Build allowlisted site artifact
+        run: npm run build:pages
       - name: Upload artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           # A workflow re-run keeps artifacts from its earlier attempt. A unique
           # name prevents deploy-pages from finding two `github-pages` artifacts.
           name: github-pages-${{ github.run_attempt }}
-          # Upload entire repository
-          path: '.'
+          # Only the explicit allowlist produced by tools/build-pages.mjs.
+          path: 'public-dist'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

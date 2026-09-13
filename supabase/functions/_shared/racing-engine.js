@@ -196,7 +196,7 @@ export function validateReplayEvents(events, endTick) {
   let previousTick = -1;
   for (const event of events) {
     if (!event || typeof event !== "object" || Array.isArray(event)) return { valid: false, error: "Invalid replay event" };
-    if (!Number.isInteger(event.tick) || event.tick < 0 || event.tick > endTick || event.tick < previousTick) {
+    if (!Number.isInteger(event.tick) || event.tick < 0 || event.tick >= endTick || event.tick <= previousTick) {
       return { valid: false, error: "Replay events are out of order" };
     }
     if (![ -1, 0, 1 ].includes(event.direction)) return { valid: false, error: "Invalid replay direction" };

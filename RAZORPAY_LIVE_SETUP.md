@@ -30,7 +30,7 @@ No Razorpay secret, webhook secret, service-role key or rate-limit secret may ap
 
 - `POST /start-run` creates a server run, subject to rate limits.
 - `POST /create-order` accepts only `day` or `week`, requires adult confirmation and the current Terms version, and calculates the price on the server.
-- `POST /verify-payment` verifies signature, order, amount, currency and captured state. It atomically creates a time-limited entitlement and returns a random bearer token.
+- `POST /verify-payment` verifies signature, order, amount, currency and captured state. It atomically creates a time-limited entitlement and returns its random bearer token exactly once. A retry returns a conflict and leaves the original token valid; anonymous lost-token recovery is intentionally unavailable without proof of identity.
 - `POST /check-pass` validates an entitlement without extending it.
 - `POST /authorize-continue` validates an active pass and records a continue atomically.
 - `POST /webhook` validates the raw-body signature and reconciles captured, failed and refunded payments. A refund revokes the pass.
@@ -44,7 +44,7 @@ The browser stores only the opaque access token. The database stores only its SH
 - Missing adult confirmation or an old Terms version is rejected.
 - Invalid origin/signature/order/amount/currency and uncaptured payments are rejected.
 - Repeated order creation reuses the pending order.
-- Repeated verification recovers the entitlement without extending expiry.
+- Repeated and concurrent verification never issues or rotates a second credential; only the original successful response contains the token.
 - Expired, refunded, revoked and forged tokens are rejected.
 - Duplicate webhook events are harmless and a refund revokes access.
 - Rate limits return 429 without load testing.

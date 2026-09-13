@@ -16,3 +16,5 @@ secrets/
 # Common local tooling files
 .DS_Store
 node_modules/
+
+public-dist/

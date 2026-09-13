@@ -545,6 +545,12 @@ function recordDirectionChange() {
   const direction = currentDirection();
   if (direction === recordedDirection) return;
   recordedDirection = direction;
+  // Multiple DOM input events can occur between fixed simulation ticks. Keep a
+  // single canonical state change for that tick so browser/server replay agrees.
+  if (replayEvents.at(-1)?.tick === gameState.tick) {
+    replayEvents[replayEvents.length - 1] = { tick: gameState.tick, direction };
+    return;
+  }
   replayEvents.push({ tick: gameState.tick, direction });
 }
 

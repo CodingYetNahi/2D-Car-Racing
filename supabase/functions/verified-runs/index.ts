@@ -72,6 +72,24 @@ function parseJsonBody(rawBody: string) {
   return parsed as Record<string, unknown>;
 }
 
+async function readLimitedBody(req: Request) {
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) { await reader.cancel(); throw new Error("REQUEST_TOO_LARGE"); }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder("utf-8", { fatal: true }).decode(body);
+}
+
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
@@ -88,22 +106,20 @@ export default {
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
     if (!origin || !ALLOWED_ORIGINS.has(origin)) return json({ error: "Origin not allowed" }, 403, origin);
     if (Number(req.headers.get("content-length") || 0) > MAX_BODY_BYTES) return json({ error: "Request is too large" }, 413, origin);
+    if (!(req.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) return json({ error: "Content-Type must be application/json" }, 415, origin);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !serviceRoleKey) {
       return json({ error: "Verification service is not configured" }, 503, origin);
     }
-    // Dedicated secrets are preferred. A domain-separated digest of Supabase's
-    // backend-only service key is a cryptographically strong deployment fallback.
     const configuredSigningSecret = Deno.env.get("VERIFIED_RUN_SIGNING_SECRET");
     const configuredRateLimitSecret = Deno.env.get("RATE_LIMIT_SECRET");
-    const signingSecret = configuredSigningSecret && configuredSigningSecret.length >= 32
-      ? configuredSigningSecret
-      : await sha256Hex(`racing-ticket-v1:${serviceRoleKey}`);
-    const rateLimitSecret = configuredRateLimitSecret && configuredRateLimitSecret.length >= 32
-      ? configuredRateLimitSecret
-      : await sha256Hex(`racing-rate-v1:${serviceRoleKey}`);
+    if (!configuredSigningSecret || configuredSigningSecret.length < 32 || !configuredRateLimitSecret || configuredRateLimitSecret.length < 32) {
+      return json({ error: "Verification service is not configured" }, 503, origin);
+    }
+    const signingSecret = configuredSigningSecret;
+    const rateLimitSecret = configuredRateLimitSecret;
 
     const db = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
     const ipAddress = req.headers.get("cf-connecting-ip") || "unknown";
@@ -120,7 +136,8 @@ export default {
       return data === true;
     };
 
-    const rawBody = await req.text();
+    let rawBody: string;
+    try { rawBody = await readLimitedBody(req); } catch { return json({ error: "Request is too large or invalid" }, 413, origin); }
     let body: Record<string, unknown>;
     try {
       body = parseJsonBody(rawBody);
@@ -185,7 +202,7 @@ export default {
         const ticket = body.ticket;
         const endTick = body.endTick;
         const events = body.events;
-        if (!isUuid(runId) || typeof ticket !== "string" || !Array.isArray(events) || !Number.isInteger(endTick)) {
+        if (!isUuid(runId) || typeof ticket !== "string" || !/^[0-9a-f]{64}$/.test(ticket) || !Array.isArray(events) || !Number.isInteger(endTick)) {
           return json({ error: "Invalid replay submission" }, 400, origin);
         }
         const validation = validateReplayEvents(events, endTick as number);
