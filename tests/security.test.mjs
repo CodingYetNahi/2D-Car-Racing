@@ -94,6 +94,7 @@ test("payment service stays fail-closed and verifies server facts", async () => 
   assert.match(backend, /payment\.status !== "captured"/);
   assert.match(backend, /x-razorpay-signature/);
   assert.match(backend, /consume_racing_rate_limit/);
+  assert.match(backend, /issue_racing_entitlement/);
 });
 
 test("database objects deny browser roles and use RLS", async () => {
@@ -193,4 +194,104 @@ test("Pages retries use one artifact per workflow attempt", async () => {
   assert.equal(workflow.match(attemptName)?.length, 2);
   assert.match(workflow, /name:\s*github-pages-\$\{\{ github\.run_attempt \}\}/);
   assert.match(workflow, /artifact_name:\s*github-pages-\$\{\{ github\.run_attempt \}\}/);
+});
+
+test("payment replay cannot rotate or recover an issued bearer credential", async () => {
+  const backend = await read("supabase/functions/racing-payments/index.ts");
+  const schema = await read("supabase/payment-schema.sql");
+  assert.doesNotMatch(backend, /rotate_racing_entitlement_token/);
+  assert.doesNotMatch(schema, /create or replace function public\.rotate_racing_entitlement_token/);
+  assert.match(schema, /drop function if exists public\.rotate_racing_entitlement_token/);
+  assert.match(backend, /completion\.issued !== true/);
+  assert.match(backend, /original pass remains valid/);
+  assert.match(schema, /for update/);
+  assert.match(schema, /select payment_row\.entitlement_id, false/);
+  assert.doesNotMatch(schema, /set token_hash = p_token_hash/);
+});
+
+test("payment verification and webhooks enforce the authoritative state machine", async () => {
+  const backend = await read("supabase/functions/racing-payments/index.ts");
+  const schema = await read("supabase/payment-schema.sql");
+  for (const fact of [
+    /safeEqual\(expectedSignature, razorpay_signature\)/,
+    /payment\.order_id !== purchase\.order_id/,
+    /payment\.amount !== purchase\.amount_paise/,
+    /payment\.currency !== "INR"/,
+    /payment\.status === "refunded"/,
+    /payment\.status !== "captured"/
+  ]) assert.match(backend, fact);
+  assert.match(schema, /racing_payment_product_price/);
+  assert.match(schema, /status in \('failed', 'refunded'\).*invalid captured transition/);
+  assert.match(schema, /status = 'pending'.*status = 'failed'/s);
+  assert.match(schema, /set status = 'refunded'[\s\S]*set status = 'refunded'/);
+  assert.match(backend, /reconcile_racing_payment_event/);
+});
+
+test("HTTP handlers reject invalid origins, media types, and streamed oversized bodies", async () => {
+  for (const file of ["supabase/functions/racing-payments/index.ts", "supabase/functions/verified-runs/index.ts"]) {
+    const backend = await read(file);
+    assert.match(backend, /Origin not allowed/);
+    assert.match(backend, /Content-Type must be application\/json/);
+    assert.match(backend, /reader\.read\(\)/);
+    assert.match(backend, /size > MAX_BODY_BYTES/);
+    assert.match(backend, /Cache-Control": "no-store"/);
+  }
+});
+
+test("verified replay rejects ambiguous events and strictly validates tickets", async () => {
+  const backend = await read("supabase/functions/verified-runs/index.ts");
+  const engine = await import("../supabase/functions/_shared/racing-engine.js");
+  assert.equal(engine.validateReplayEvents([{ tick: 2, direction: 1 }, { tick: 2, direction: -1 }], 10).valid, false);
+  assert.equal(engine.validateReplayEvents([{ tick: 10, direction: 1 }], 10).valid, false);
+  assert.equal(engine.validateReplayEvents([{ tick: NaN, direction: 1 }], 10).valid, false);
+  assert.equal(engine.validateReplayEvents([{ tick: 1, direction: Infinity }], 10).valid, false);
+  assert.match(backend, /\^\[0-9a-f\]\{64\}\$/);
+  assert.match(backend, /Run is unavailable or expired/);
+  assert.doesNotMatch(backend, /racing-ticket-v1:\$\{serviceRoleKey\}/);
+});
+
+test("Pages artifact is an explicit frontend-only allowlist", async () => {
+  const { buildPages, PUBLIC_FILES } = await import("../tools/build-pages.mjs");
+  const { mkdtemp, readdir, readFile: readOutput, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const output = await mkdtemp(join(tmpdir(), "racing-pages-"));
+  try {
+    await buildPages(output);
+    assert.deepEqual((await readdir(output)).sort(), [...PUBLIC_FILES, "racing-engine.js"].sort());
+    assert.doesNotMatch((await readOutput(join(output, "script.js"), "utf8")), /supabase\/functions/);
+    for (const forbidden of ["supabase", "tests", ".github", "package.json", "SECURITY.md"]) {
+      assert.equal((await readdir(output)).includes(forbidden), false);
+    }
+  } finally { await rm(output, { recursive: true, force: true }); }
+  const workflow = await read(".github/workflows/static.yml");
+  assert.match(workflow, /npm run build:pages/);
+  assert.match(workflow, /path: 'public-dist'/);
+  assert.doesNotMatch(workflow, /path: ['"]?\.['"]?/);
+});
+
+test("schemas expose cleanup only to the backend role", async () => {
+  const payment = await read("supabase/payment-schema.sql");
+  const verified = await read("supabase/verified-schema.sql");
+  for (const schema of [payment, verified]) {
+    assert.match(schema, /interval '2 days'/);
+    assert.match(schema, /cleanup_racing_[a-z_]+\(\) from public, anon, authenticated/);
+    assert.match(schema, /cleanup_racing_[a-z_]+\(\) to service_role/);
+  }
+});
+
+test("all tracked files remain free of high-confidence secret material", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const files = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
+  const patterns = [
+    /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
+    /\brzp_live_[A-Za-z0-9]{12,}\b/,
+    /\b(?:sk|rk)_(?:live|prod)_[A-Za-z0-9_-]{16,}\b/,
+    /(?:SUPABASE_SERVICE_ROLE_KEY|RAZORPAY_KEY_SECRET|RAZORPAY_WEBHOOK_SECRET|VERIFIED_RUN_SIGNING_SECRET|RATE_LIMIT_SECRET)\s*=\s*["'][^"'\s]{8,}["']/
+  ];
+  for (const file of files) {
+    if (file === "tests/security.test.mjs") continue;
+    const content = await read(file);
+    for (const pattern of patterns) assert.doesNotMatch(content, pattern, `${file} contains secret-like material`);
+  }
 });

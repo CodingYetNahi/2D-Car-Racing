@@ -87,6 +87,27 @@ function parseJsonBody(rawBody: string) {
   return parsed as Record<string, unknown>;
 }
 
+async function readLimitedBody(req: Request) {
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel();
+      throw new Error("REQUEST_TOO_LARGE");
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder("utf-8", { fatal: true }).decode(body);
+}
+
 function publicEntitlement(row: Record<string, unknown>, key: "active" | "authorized") {
   return {
     [key]: true,
@@ -108,8 +129,10 @@ export default {
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
     if (action !== "webhook" && (!origin || !ALLOWED_ORIGINS.has(origin))) return json({ error: "Origin not allowed" }, 403, origin);
     if (Number(req.headers.get("content-length") || 0) > MAX_BODY_BYTES) return json({ error: "Request is too large" }, 413, origin);
+    if (!(req.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) return json({ error: "Content-Type must be application/json" }, 415, origin);
 
-    const rawBody = await req.text();
+    let rawBody: string;
+    try { rawBody = await readLimitedBody(req); } catch { return json({ error: "Request is too large or invalid" }, 413, origin); }
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const razorpayKeyId = Deno.env.get("RAZORPAY_KEY_ID");
@@ -137,26 +160,27 @@ export default {
         const orderId = String(paymentEntity?.order_id || "");
 
         if (eventName === "payment.captured" && paymentId && orderId) {
-          const { error } = await db.from("racing_payments").update({ status: "captured", payment_id: paymentId }).eq("order_id", orderId).in("status", ["pending", "captured"]);
+          if (paymentEntity?.status !== "captured" || paymentEntity?.currency !== "INR" || !Number.isInteger(paymentEntity?.amount)) return json({ error: "Invalid captured event" }, 400, origin);
+          const { error } = await db.rpc("reconcile_racing_payment_event", { p_event: "captured", p_order_id: orderId, p_payment_id: paymentId, p_amount_paise: paymentEntity.amount, p_currency: paymentEntity.currency });
           if (error) throw new Error("Unable to reconcile captured payment");
         } else if (eventName === "payment.failed" && orderId) {
-          const { error } = await db.from("racing_payments").update({ status: "failed", payment_id: paymentId || null }).eq("order_id", orderId).eq("status", "pending");
+          const { error } = await db.rpc("reconcile_racing_payment_event", { p_event: "failed", p_order_id: orderId, p_payment_id: paymentId || null, p_amount_paise: paymentEntity?.amount || null, p_currency: paymentEntity?.currency || null });
           if (error) throw new Error("Unable to reconcile failed payment");
         } else if ((eventName === "refund.processed" || eventName === "payment.refunded") && paymentId) {
-          const { data: payment, error } = await db.from("racing_payments").update({ status: "refunded" }).eq("payment_id", paymentId).select("entitlement_id").maybeSingle();
+          const { error } = await db.rpc("reconcile_racing_payment_event", { p_event: "refunded", p_order_id: orderId || null, p_payment_id: paymentId, p_amount_paise: null, p_currency: null });
           if (error) throw new Error("Unable to reconcile refund");
-          if (payment?.entitlement_id) {
-            const { error: revokeError } = await db.from("racing_entitlements").update({ status: "refunded", updated_at: new Date().toISOString() }).eq("id", payment.entitlement_id);
-            if (revokeError) throw new Error("Unable to revoke refunded pass");
-          }
         }
         return json({ received: true }, 200, origin);
       }
 
-      const forwardedFor = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+      const limits: Record<string, number> = { "start-run": 20, "create-order": 5, "verify-payment": 10, "check-pass": 30, "authorize-continue": 30 };
+      if (!Object.prototype.hasOwnProperty.call(limits, action)) return json({ error: "Unknown action" }, 404, origin);
+      const body = parseJsonBody(rawBody);
+      // Supabase's trusted edge supplies this header. Do not deploy directly without
+      // configuring the proxy to overwrite (not append to) it.
+      const forwardedFor = req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "unknown";
       const userAgent = (req.headers.get("user-agent") || "unknown").slice(0, 160);
       const clientKey = await hmacHex(`${forwardedFor}|${userAgent}`, rateLimitSecret);
-      const limits: Record<string, number> = { "start-run": 20, "create-order": 5, "verify-payment": 10, "check-pass": 30, "authorize-continue": 30 };
       const bucketMs = Math.floor(Date.now() / 60_000) * 60_000;
       const { data: allowed, error: limitError } = await db.rpc("consume_racing_rate_limit", {
         p_client_key: clientKey,
@@ -167,7 +191,6 @@ export default {
       if (limitError) throw new Error("Rate limiter unavailable");
       if (!allowed) return json({ error: "Too many requests. Try again shortly." }, 429, origin);
 
-      const body = parseJsonBody(rawBody);
       if (action === "start-run") {
         const { data, error } = await db.from("racing_payment_runs").insert({ state: "playing" }).select("id").single();
         if (error || !data) throw new Error("Unable to create run");
@@ -242,29 +265,24 @@ export default {
           .eq("order_id", razorpay_order_id).eq("run_id", runId).maybeSingle();
         if (!purchase || !isProductCode(purchase.product_code)) return json({ error: "Order not found" }, 404, origin);
 
-        const accessToken = randomToken();
-        const tokenHash = await sha256Hex(accessToken);
-        if (purchase.status === "paid" && purchase.payment_id === razorpay_payment_id && purchase.entitlement_id) {
-          const { data: entitlement, error } = await db.rpc("rotate_racing_entitlement_token", { p_entitlement_id: purchase.entitlement_id, p_token_hash: tokenHash }).single();
-          if (error || !entitlement) throw new Error("Unable to recover pass");
-          return json({ verified: true, accessToken, active: true, productCode: entitlement.product_code, productName: isProductCode(entitlement.product_code) ? PASS_PRODUCTS[entitlement.product_code].name : "Access Pass", expiresAt: entitlement.expires_at }, 200, origin);
-        }
-
         const expectedSignature = await hmacHex(`${razorpay_order_id}|${razorpay_payment_id}`, razorpayKeySecret);
         if (!safeEqual(expectedSignature, razorpay_signature)) return json({ error: "Payment signature verification failed" }, 400, origin);
         const payment = await razorpayRequest(`/payments/${encodeURIComponent(razorpay_payment_id)}`, { method: "GET" }, razorpayKeyId, razorpayKeySecret);
         if (payment.order_id !== purchase.order_id || payment.amount !== purchase.amount_paise || payment.currency !== "INR") return json({ error: "Payment details do not match the order" }, 409, origin);
+        if (payment.status === "refunded") return json({ error: "Payment has been refunded" }, 409, origin);
         if (payment.status !== "captured") return json({ error: "Payment is not captured yet" }, 409, origin);
 
+        const accessToken = randomToken();
+        const tokenHash = await sha256Hex(accessToken);
         const expiresAt = new Date(Date.now() + PASS_PRODUCTS[purchase.product_code].durationHours * 60 * 60 * 1000).toISOString();
-        const { data: entitlementId, error } = await db.rpc("complete_racing_payment", {
+        const { data: completion, error } = await db.rpc("issue_racing_entitlement", {
           p_run_id: runId, p_order_id: razorpay_order_id, p_payment_id: razorpay_payment_id,
           p_token_hash: tokenHash, p_expires_at: expiresAt
-        });
-        if (error || !entitlementId) throw new Error("Unable to grant pass");
-        const { data: entitlement } = await db.from("racing_entitlements").select("product_code, expires_at").eq("id", entitlementId).single();
-        if (!entitlement || !isProductCode(entitlement.product_code)) throw new Error("Unable to read granted pass");
-        return json({ verified: true, accessToken, active: true, productCode: entitlement.product_code, productName: PASS_PRODUCTS[entitlement.product_code].name, expiresAt: entitlement.expires_at }, 200, origin);
+        }).maybeSingle();
+        if (error || !completion) throw new Error("Unable to grant pass");
+        if (completion.issued !== true) return json({ error: "Payment was already verified; the original pass remains valid" }, 409, origin);
+        if (!isProductCode(completion.product_code)) throw new Error("Unable to read granted pass");
+        return json({ verified: true, accessToken, active: true, productCode: completion.product_code, productName: PASS_PRODUCTS[completion.product_code].name, expiresAt: completion.expires_at }, 200, origin);
       }
 
       return json({ error: "Unknown action" }, 404, origin);

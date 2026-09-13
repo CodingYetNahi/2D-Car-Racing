@@ -21,7 +21,7 @@ alter table public.racing_payment_runs add column if not exists adult_confirmed_
 
 create table if not exists public.racing_entitlements (
   id uuid primary key default gen_random_uuid(),
-  token_hash text not null unique check (length(token_hash) = 64),
+  token_hash text not null unique check (token_hash ~ '^[0-9a-f]{64}$'),
   product_code text not null check (product_code in ('day', 'week')),
   status text not null default 'active' check (status in ('active', 'revoked', 'refunded')),
   expires_at timestamptz not null,
@@ -36,7 +36,8 @@ create table if not exists public.racing_payments (
   order_id text not null unique,
   payment_id text unique,
   product_code text not null check (product_code in ('day', 'week')),
-  amount_paise integer not null check (amount_paise in (2900, 9900)),
+  amount_paise integer not null,
+  constraint racing_payment_product_price check ((product_code = 'day' and amount_paise = 2900) or (product_code = 'week' and amount_paise = 9900)),
   currency text not null default 'INR' check (currency = 'INR'),
   status text not null default 'pending' check (status in ('pending', 'captured', 'paid', 'failed', 'refunded')),
   terms_version text not null,
@@ -50,6 +51,10 @@ alter table public.racing_payments add column if not exists product_code text;
 alter table public.racing_payments add column if not exists terms_version text;
 alter table public.racing_payments add column if not exists adult_confirmed_at timestamptz;
 alter table public.racing_payments add column if not exists entitlement_id uuid references public.racing_entitlements(id) on delete restrict;
+alter table public.racing_entitlements drop constraint if exists racing_entitlements_token_hash_check;
+alter table public.racing_entitlements add constraint racing_entitlements_token_hash_check check (token_hash ~ '^[0-9a-f]{64}$');
+alter table public.racing_payments drop constraint if exists racing_payment_product_price;
+alter table public.racing_payments add constraint racing_payment_product_price check ((product_code = 'day' and amount_paise = 2900) or (product_code = 'week' and amount_paise = 9900));
 do $$
 begin
   if exists (
@@ -147,13 +152,20 @@ begin
 end;
 $$;
 
-create or replace function public.complete_racing_payment(
+-- Atomically issues exactly one credential. A retry reports the existing grant but
+-- cannot retrieve or replace its bearer token (only its hash is persisted).
+-- Remove the legacy replay-recovery entry points. They rotated an anonymous
+-- entitlement using reusable Checkout data and must not survive an upgrade.
+drop function if exists public.rotate_racing_entitlement_token(uuid, text);
+drop function if exists public.complete_racing_payment(uuid, text, text, text, timestamptz);
+
+create or replace function public.issue_racing_entitlement(
   p_run_id uuid,
   p_order_id text,
   p_payment_id text,
   p_token_hash text,
   p_expires_at timestamptz
-) returns uuid
+) returns table(entitlement_id uuid, issued boolean, product_code text, expires_at timestamptz)
 language plpgsql
 security invoker
 set search_path = pg_catalog, public
@@ -162,20 +174,24 @@ declare
   payment_row public.racing_payments%rowtype;
   new_entitlement_id uuid;
 begin
+  if length(p_token_hash) <> 64 or p_token_hash !~ '^[0-9a-f]{64}$' or p_expires_at <= now() then
+    raise exception 'invalid entitlement';
+  end if;
+
   select * into payment_row from public.racing_payments
   where run_id = p_run_id and order_id = p_order_id
   for update;
-  if p_expires_at <= now() or length(p_token_hash) <> 64 then raise exception 'invalid entitlement'; end if;
+  if payment_row.id is null then raise exception 'payment not found'; end if;
 
   if payment_row.status = 'paid' and payment_row.payment_id = p_payment_id and payment_row.entitlement_id is not null then
-    update public.racing_entitlements
-    set token_hash = p_token_hash, updated_at = now()
-    where id = payment_row.entitlement_id and status = 'active' and expires_at > now();
-    if not found then raise exception 'existing entitlement is not active'; end if;
-    return payment_row.entitlement_id;
+    return query select payment_row.entitlement_id, false,
+      payment_row.product_code, entitlement.expires_at
+      from public.racing_entitlements entitlement where entitlement.id = payment_row.entitlement_id;
+    return;
   end if;
-
-  if payment_row.id is null or payment_row.status not in ('pending', 'captured') then raise exception 'payment cannot be completed'; end if;
+  if payment_row.status not in ('pending', 'captured') or payment_row.payment_id is not null and payment_row.payment_id <> p_payment_id then
+    raise exception 'payment cannot be completed';
+  end if;
 
   insert into public.racing_entitlements(token_hash, product_code, expires_at)
   values (p_token_hash, payment_row.product_code, p_expires_at)
@@ -184,28 +200,56 @@ begin
   update public.racing_payments
   set status = 'paid', payment_id = p_payment_id, paid_at = now(), entitlement_id = new_entitlement_id
   where id = payment_row.id;
-
   update public.racing_payment_runs
-  set state = 'playing', pending_order_id = null, pending_amount_paise = null, pending_product_code = null, updated_at = now()
+  set state = 'playing', pending_order_id = null, pending_amount_paise = null,
+      pending_product_code = null, updated_at = now()
   where id = p_run_id and pending_order_id = p_order_id;
 
-  return new_entitlement_id;
+  return query select new_entitlement_id, true, payment_row.product_code, p_expires_at;
 end;
 $$;
 
-create or replace function public.rotate_racing_entitlement_token(p_entitlement_id uuid, p_token_hash text)
-returns table(product_code text, expires_at timestamptz)
+-- Webhook transitions and refund revocation share one transaction and row lock.
+create or replace function public.reconcile_racing_payment_event(
+  p_event text, p_order_id text, p_payment_id text,
+  p_amount_paise integer, p_currency text
+) returns void
 language plpgsql
 security invoker
 set search_path = pg_catalog, public
 as $$
+declare payment_row public.racing_payments%rowtype;
 begin
-  if length(p_token_hash) <> 64 then raise exception 'invalid token hash'; end if;
-  return query
-  update public.racing_entitlements
-  set token_hash = p_token_hash, updated_at = now()
-  where id = p_entitlement_id and status = 'active' and racing_entitlements.expires_at > now()
-  returning racing_entitlements.product_code, racing_entitlements.expires_at;
+  if p_event = 'refunded' then
+    select * into payment_row from public.racing_payments where payment_id = p_payment_id for update;
+    if payment_row.id is null then return; end if;
+    if payment_row.status <> 'refunded' then
+      update public.racing_payments set status = 'refunded' where id = payment_row.id;
+      if payment_row.entitlement_id is not null then
+        update public.racing_entitlements set status = 'refunded', updated_at = now()
+        where id = payment_row.entitlement_id and status <> 'refunded';
+      end if;
+    end if;
+    return;
+  end if;
+
+  select * into payment_row from public.racing_payments where order_id = p_order_id for update;
+  if payment_row.id is null then return; end if;
+  if p_amount_paise is distinct from payment_row.amount_paise or p_currency is distinct from payment_row.currency then
+    raise exception 'webhook payment mismatch';
+  end if;
+  if p_event = 'captured' then
+    if payment_row.status in ('failed', 'refunded') then raise exception 'invalid captured transition'; end if;
+    if payment_row.payment_id is not null and payment_row.payment_id <> p_payment_id then raise exception 'payment id mismatch'; end if;
+    if payment_row.status in ('pending', 'captured') then
+      update public.racing_payments set status = 'captured', payment_id = p_payment_id where id = payment_row.id;
+    end if;
+  elsif p_event = 'failed' then
+    -- A stale failure can never move captured/paid/refunded state backwards.
+    if payment_row.status = 'pending' then update public.racing_payments set status = 'failed', payment_id = p_payment_id where id = payment_row.id; end if;
+  else
+    raise exception 'unsupported payment event';
+  end if;
 end;
 $$;
 
@@ -227,11 +271,23 @@ $$;
 
 revoke execute on function public.consume_racing_rate_limit(text, text, timestamptz, integer) from public, anon, authenticated;
 revoke execute on function public.record_racing_order(uuid, text, text, integer, text) from public, anon, authenticated;
-revoke execute on function public.complete_racing_payment(uuid, text, text, text, timestamptz) from public, anon, authenticated;
-revoke execute on function public.rotate_racing_entitlement_token(uuid, text) from public, anon, authenticated;
+revoke execute on function public.issue_racing_entitlement(uuid, text, text, text, timestamptz) from public, anon, authenticated;
+revoke execute on function public.reconcile_racing_payment_event(text, text, text, integer, text) from public, anon, authenticated;
 revoke execute on function public.consume_racing_entitlement(text) from public, anon, authenticated;
 grant execute on function public.consume_racing_rate_limit(text, text, timestamptz, integer) to service_role;
 grant execute on function public.record_racing_order(uuid, text, text, integer, text) to service_role;
-grant execute on function public.complete_racing_payment(uuid, text, text, text, timestamptz) to service_role;
-grant execute on function public.rotate_racing_entitlement_token(uuid, text) to service_role;
+grant execute on function public.issue_racing_entitlement(uuid, text, text, text, timestamptz) to service_role;
+grant execute on function public.reconcile_racing_payment_event(text, text, text, integer, text) to service_role;
 grant execute on function public.consume_racing_entitlement(text) to service_role;
+
+-- Schedule this with Supabase Cron; it is deliberately not browser-callable.
+create or replace function public.cleanup_racing_payment_operational_data()
+returns void language sql security invoker set search_path = pg_catalog, public
+as $$
+  delete from public.racing_rate_limits where bucket < now() - interval '2 days';
+  delete from public.racing_payment_runs
+    where created_at < now() - interval '2 days' and state in ('playing', 'ordering')
+      and not exists (select 1 from public.racing_payments p where p.run_id = racing_payment_runs.id);
+$$;
+revoke execute on function public.cleanup_racing_payment_operational_data() from public, anon, authenticated;
+grant execute on function public.cleanup_racing_payment_operational_data() to service_role;

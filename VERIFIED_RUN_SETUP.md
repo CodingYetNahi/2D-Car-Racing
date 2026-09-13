@@ -26,7 +26,7 @@ Use the dedicated Supabase project, not a database shared with another applicati
 
 1. Apply `supabase/verified-schema.sql`.
 2. Deploy `supabase/functions/verified-runs/index.ts` with JWT verification disabled because this function validates its own opaque bearer token. Do not expose the service-role key. Deploy every shared-engine version change before publishing its matching browser files; the browser and verifier must use the same `GAME_VERSION` and simulation.
-3. Prefer setting independent random secrets of at least 32 bytes as `VERIFIED_RUN_SIGNING_SECRET` and `RATE_LIMIT_SECRET`. If absent, the function derives domain-separated keys from the backend-only service-role key; rotating that key then invalidates outstanding tickets.
+3. Set independent random secrets of at least 32 bytes as `VERIFIED_RUN_SIGNING_SECRET` and `RATE_LIMIT_SECRET`. The service fails closed if either is missing or too short; never derive them from or reuse the service-role key.
 4. Set `window.RACING_VERIFICATION_API_BASE` in `game-config.js` to `https://PROJECT_REF.supabase.co/functions/v1/verified-runs`.
 5. Keep `window.RACING_PAYMENT_API_BASE` blank. Payment launch has separate legal and security gates.
 

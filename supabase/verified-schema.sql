@@ -127,3 +127,19 @@ revoke execute on function public.consume_racing_verification_rate_limit(text, t
 revoke execute on function public.complete_racing_verified_run(uuid, uuid, integer, integer, integer) from public, anon, authenticated;
 grant execute on function public.consume_racing_verification_rate_limit(text, text, timestamptz, integer) to service_role;
 grant execute on function public.complete_racing_verified_run(uuid, uuid, integer, integer, integer) to service_role;
+
+-- Schedule this with Supabase Cron. Scores and completed payment records follow
+-- the operator's separately approved retention policy and are not deleted here.
+create or replace function public.cleanup_racing_verification_operational_data()
+returns void language plpgsql security invoker set search_path = pg_catalog, public
+as $$
+begin
+  delete from public.racing_verification_rate_limits where bucket < now() - interval '2 days';
+  update public.racing_verified_runs set status = 'expired'
+    where status = 'issued' and expires_at < now();
+  delete from public.racing_verified_runs
+    where status = 'expired' and expires_at < now() - interval '7 days';
+end;
+$$;
+revoke execute on function public.cleanup_racing_verification_operational_data() from public, anon, authenticated;
+grant execute on function public.cleanup_racing_verification_operational_data() to service_role;
