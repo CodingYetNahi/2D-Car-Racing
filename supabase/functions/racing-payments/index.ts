@@ -198,7 +198,16 @@ export default {
       }
 
       if (action === "check-pass" || action === "authorize-continue") {
-        if (action === "authorize-continue" && !isUuid(body.runId)) return json({ error: "Invalid run" }, 400, origin);
+        if (action === "authorize-continue") {
+          if (!isUuid(body.runId)) return json({ error: "Invalid run" }, 400, origin);
+          const { data: run, error: runError } = await db.from("racing_payment_runs")
+            .select("id, state")
+            .eq("id", body.runId)
+            .maybeSingle();
+          if (runError) throw new Error("Unable to validate run");
+          if (!run) return json({ error: "Run not found" }, 404, origin);
+          if (run.state !== "playing") return json({ error: "Run is not active" }, 409, origin);
+        }
         const token = bearerToken(req);
         if (!token) return json({ error: "Pass token required" }, 401, origin);
         const tokenHash = await sha256Hex(token);
