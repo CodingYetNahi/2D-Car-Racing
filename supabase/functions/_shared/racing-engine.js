@@ -1,4 +1,4 @@
-export const GAME_VERSION = "3.3.0";
+export const GAME_VERSION = "3.4.0";
 export const TICK_RATE = 60;
 export const TICK_SECONDS = 1 / TICK_RATE;
 export const MAX_VERIFIED_TICKS = TICK_RATE * 60 * 10;
@@ -17,8 +17,8 @@ const TRAFFIC_HEIGHT = 84;
 const TRAFFIC_ROUTE_GAP = 24;
 const TRAFFIC_LANE_CHANGE_SPEED = 1.15;
 const TRAFFIC_LANE_CHANGE_CHANCE = 0.35;
-const LINE_RIDE_TOLERANCE = 14;
-const LINE_RIDE_GRACE_TICKS = Math.round(TICK_RATE * 0.55);
+const DIVIDER_TRAFFIC_CHANCE = 0.24;
+const DIVIDER_MIN_GAP = 190;
 const UINT32_RANGE = 0x1_0000_0000;
 
 export const TRAFFIC_COLORS = Object.freeze(["#ffc857", "#3dd6d0", "#a78bfa", "#ff7b72", "#f8f9fa"]);
@@ -34,32 +34,80 @@ export function laneBounds(lane) {
 export function laneCenter(lane) { const bounds = laneBounds(lane); return (bounds.left + bounds.right) / 2; }
 export function clampVehicleToRoad(vehicle) { vehicle.x = Math.max(ROAD_LEFT, Math.min(vehicle.x, ROAD_RIGHT - vehicle.width)); return vehicle; }
 function trafficX(lane, carWidth) { const bounds = laneBounds(lane); return (bounds.left + bounds.right - carWidth) / 2; }
+function dividerX(divider, carWidth) { const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT; return ROAD_LEFT + laneWidth * divider - carWidth / 2; }
 
-function playerIsRidingDivider(player) {
-  const center = player.x + player.width / 2;
+function occupiedLanes(vehicle) {
   const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT;
-  for (let divider = 1; divider < LANE_COUNT; divider += 1) {
-    const dividerX = ROAD_LEFT + laneWidth * divider;
-    if (Math.abs(center - dividerX) <= LINE_RIDE_TOLERANCE) return true;
-  }
-  return false;
+  const leftLane = Math.max(0, Math.min(LANE_COUNT - 1, Math.floor((vehicle.x - ROAD_LEFT + 1) / laneWidth)));
+  const rightLane = Math.max(0, Math.min(LANE_COUNT - 1, Math.floor((vehicle.x + vehicle.width - ROAD_LEFT - 1) / laneWidth)));
+  const lanes = new Set();
+  for (let lane = leftLane; lane <= rightLane; lane += 1) lanes.add(lane);
+  return lanes;
 }
 
 function wouldBlockRoad(state, candidate, ignoredCar = null) {
-  const nearbyLanes = new Set([candidate.lane]);
+  const occupied = new Set(occupiedLanes(candidate));
   const safeVerticalGap = candidate.height + state.player.height + TRAFFIC_ROUTE_GAP;
-  for (const car of state.traffic) { if (car === ignoredCar) continue; if (Math.abs(car.y - candidate.y) < safeVerticalGap) nearbyLanes.add(car.lane); }
-  return nearbyLanes.size === LANE_COUNT;
+  for (const car of state.traffic) {
+    if (car === ignoredCar || Math.abs(car.y - candidate.y) >= safeVerticalGap) continue;
+    for (const lane of occupiedLanes(car)) occupied.add(lane);
+  }
+  return occupied.size === LANE_COUNT;
+}
+
+function dividerPlacementIsClear(state, divider) {
+  const x = dividerX(divider, TRAFFIC_WIDTH);
+  const probe = { x, y: -TRAFFIC_HEIGHT - 10, width: TRAFFIC_WIDTH, height: TRAFFIC_HEIGHT };
+  const probeLanes = occupiedLanes(probe);
+  return state.traffic.every((car) => {
+    if (Math.abs(car.y - probe.y) >= DIVIDER_MIN_GAP) return true;
+    return [...occupiedLanes(car)].every((lane) => !probeLanes.has(lane));
+  });
 }
 
 function spawnTraffic(state) {
-  const availableLanes = Array.from({ length: LANE_COUNT }, (_, lane) => lane).filter((lane) => state.traffic.every((car) => car.lane !== lane || car.y > 170));
+  const availableLanes = Array.from({ length: LANE_COUNT }, (_, lane) => lane).filter((lane) =>
+    state.traffic.every((car) => !occupiedLanes(car).has(lane) || car.y > 170)
+  );
   if (availableLanes.length === 0) return;
+
   let lane = availableLanes[0];
-  for (let offset = 0; offset < LANE_COUNT; offset += 1) { const candidateLane = (state.spawnLaneCursor + offset) % LANE_COUNT; if (availableLanes.includes(candidateLane)) { lane = candidateLane; break; } }
+  for (let offset = 0; offset < LANE_COUNT; offset += 1) {
+    const candidateLane = (state.spawnLaneCursor + offset) % LANE_COUNT;
+    if (availableLanes.includes(candidateLane)) { lane = candidateLane; break; }
+  }
   state.spawnLaneCursor = (lane + 1) % LANE_COUNT;
-  const candidate = { lane, x: trafficX(lane, TRAFFIC_WIDTH), y: -TRAFFIC_HEIGHT - 10, width: TRAFFIC_WIDTH, height: TRAFFIC_HEIGHT, speedFactor: 0.88 + nextRandom(state) * 0.24, colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length), laneChangeDirection: nextRandom(state) < TRAFFIC_LANE_CHANGE_CHANCE ? (lane === 0 ? 1 : lane === LANE_COUNT - 1 ? -1 : nextRandom(state) < 0.5 ? -1 : 1) : 0, laneChangeY: 70 + nextRandom(state) * 300, laneChangeAttempted: false };
-  if (!wouldBlockRoad(state, candidate)) state.traffic.push(candidate);
+
+  // A minority of traffic deliberately straddles a divider. This models the
+  // risky space a real vehicle occupies while overtaking/merging and removes
+  // the artificial safe corridor without punishing the player for using it.
+  // Never spawn divider traffic twice in a row, and only use a divider when
+  // both neighbouring lanes have enough vertical clearance.
+  let divider = 0;
+  if (!state.lastSpawnWasDivider && nextRandom(state) < DIVIDER_TRAFFIC_CHANCE) {
+    const candidates = [1, 2].filter((value) => dividerPlacementIsClear(state, value));
+    if (candidates.length) divider = candidates[Math.floor(nextRandom(state) * candidates.length)];
+  }
+
+  const isDividerCar = divider > 0;
+  const candidate = {
+    lane,
+    divider,
+    x: isDividerCar ? dividerX(divider, TRAFFIC_WIDTH) : trafficX(lane, TRAFFIC_WIDTH),
+    y: -TRAFFIC_HEIGHT - 10,
+    width: TRAFFIC_WIDTH,
+    height: TRAFFIC_HEIGHT,
+    speedFactor: 0.88 + nextRandom(state) * 0.24,
+    colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length),
+    laneChangeDirection: isDividerCar ? 0 : (nextRandom(state) < TRAFFIC_LANE_CHANGE_CHANCE ? (lane === 0 ? 1 : lane === LANE_COUNT - 1 ? -1 : nextRandom(state) < 0.5 ? -1 : 1) : 0),
+    laneChangeY: 70 + nextRandom(state) * 300,
+    laneChangeAttempted: isDividerCar
+  };
+
+  if (!wouldBlockRoad(state, candidate)) {
+    state.traffic.push(candidate);
+    state.lastSpawnWasDivider = isDividerCar;
+  }
 }
 
 export function overlaps(a, b) {
@@ -69,7 +117,7 @@ export function overlaps(a, b) {
 
 export function createGameState(seed) {
   const normalizedSeed = normalizeSeed(seed);
-  return { version: GAME_VERSION, seed: normalizedSeed, rngState: normalizedSeed, tick: 0, score: 0, crashed: false, capped: false, roadOffset: 0, spawnProgress: 0, worldSpeed: 245, spawnLaneCursor: normalizedSeed % LANE_COUNT, traffic: [], lineRideTicks: 0, player: { x: (GAME_WIDTH - PLAYER_WIDTH) / 2, y: GAME_HEIGHT - 126, width: PLAYER_WIDTH, height: PLAYER_HEIGHT, color: "#ff3d4f" } };
+  return { version: GAME_VERSION, seed: normalizedSeed, rngState: normalizedSeed, tick: 0, score: 0, crashed: false, capped: false, roadOffset: 0, spawnProgress: 0, worldSpeed: 245, spawnLaneCursor: normalizedSeed % LANE_COUNT, traffic: [], lastSpawnWasDivider: false, player: { x: (GAME_WIDTH - PLAYER_WIDTH) / 2, y: GAME_HEIGHT - 126, width: PLAYER_WIDTH, height: PLAYER_HEIGHT, color: "#ff3d4f" } };
 }
 
 export function stepGame(state, direction = 0) {
@@ -77,10 +125,6 @@ export function stepGame(state, direction = 0) {
   const safeDirection = direction === -1 || direction === 1 ? direction : 0;
   state.player.x += safeDirection * PLAYER_SPEED_PER_TICK;
   clampVehicleToRoad(state.player);
-
-  if (playerIsRidingDivider(state.player)) state.lineRideTicks += 1;
-  else state.lineRideTicks = 0;
-  if (state.lineRideTicks >= LINE_RIDE_GRACE_TICKS) { state.crashed = true; return state; }
 
   state.tick += 1;
   const elapsedSeconds = state.tick / TICK_RATE;
@@ -94,17 +138,23 @@ export function stepGame(state, direction = 0) {
     const canStartLaneChange = !car.laneChangeAttempted && car.laneChangeDirection !== 0 && car.y >= car.laneChangeY;
     if (canStartLaneChange) {
       const targetLane = car.lane + car.laneChangeDirection;
-      const candidate = { ...car, lane: targetLane };
-      const laneIsClear = !state.traffic.some((other) => other !== car && other.lane === targetLane && Math.abs(other.y - car.y) < 125);
-      if (targetLane >= 0 && targetLane < LANE_COUNT && laneIsClear && !wouldBlockRoad(state, candidate, car)) car.lane = targetLane;
+      if (targetLane >= 0 && targetLane < LANE_COUNT) {
+        const candidate = { ...car, lane: targetLane, divider: 0, x: trafficX(targetLane, car.width) };
+        const laneIsClear = !state.traffic.some((other) => other !== car && occupiedLanes(other).has(targetLane) && Math.abs(other.y - car.y) < 125);
+        if (laneIsClear && !wouldBlockRoad(state, candidate, car)) car.lane = targetLane;
+      }
       car.laneChangeAttempted = true;
     }
-    const bounds = laneBounds(car.lane);
-    const targetX = (bounds.left + bounds.right - car.width) / 2;
-    car.x += Math.max(-TRAFFIC_LANE_CHANGE_SPEED, Math.min(TRAFFIC_LANE_CHANGE_SPEED, targetX - car.x));
+
+    if (!car.divider) {
+      const bounds = laneBounds(car.lane);
+      const targetX = (bounds.left + bounds.right - car.width) / 2;
+      car.x += Math.max(-TRAFFIC_LANE_CHANGE_SPEED, Math.min(TRAFFIC_LANE_CHANGE_SPEED, targetX - car.x));
+    }
     car.y += state.worldSpeed * car.speedFactor * TICK_SECONDS;
     if (overlaps(state.player, car)) { state.crashed = true; break; }
   }
+
   state.traffic = state.traffic.filter((car) => car.y < GAME_HEIGHT + car.height);
   state.score = Math.floor(elapsedSeconds * 10);
   if (state.tick >= MAX_VERIFIED_TICKS && !state.crashed) state.capped = true;
