@@ -14,11 +14,10 @@ export class EngineAudio {
     this.audio.muted = false;
     this.audio.volume = 0.9 * this.mixLevel;
     try {
+      // Start the real media sample inside the click/tap itself. Do not pause it
+      // here: the caller immediately synchronizes running state afterwards.
+      // This preserves Safari/iOS media activation for a race already in progress.
       await this.audio.play();
-      if (!this.running) {
-        this.audio.pause();
-        this.audio.currentTime = 0;
-      }
       return true;
     } catch (error) {
       this.enabled = false;
@@ -28,10 +27,7 @@ export class EngineAudio {
     }
   }
 
-  disable() {
-    this.enabled = false;
-    this.#applyState();
-  }
+  disable() { this.enabled = false; this.#applyState(); }
 
   setRunning(running) {
     this.running = Boolean(running);
@@ -54,10 +50,7 @@ export class EngineAudio {
     this.#applyState();
   }
 
-  suspend() {
-    this.audio?.pause();
-    return Promise.resolve();
-  }
+  suspend() { this.audio?.pause(); return Promise.resolve(); }
 
   #createPlayer() {
     this.audio = new Audio(ENGINE_SAMPLE_URL);
