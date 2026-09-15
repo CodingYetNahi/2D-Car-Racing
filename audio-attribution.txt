@@ -1,0 +1,3 @@
+Racing engine sample: OpenGameArt "racing car engine sound loops" by domasx2, CC0/public domain.
+Source: https://opengameart.org/content/racing-car-engine-sound-loops
+Runtime mirror: clhforensics/indygp public audio assets (f1_rpm_step_2.wav).
