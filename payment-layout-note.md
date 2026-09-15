@@ -1,0 +1,1 @@
+Mobile checkout keeps the underlying game shell on the stable viewport height so opening Razorpay does not resize the game.
