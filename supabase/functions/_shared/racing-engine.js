@@ -1,4 +1,4 @@
-export const GAME_VERSION = "3.2.0";
+export const GAME_VERSION = "3.3.0";
 export const TICK_RATE = 60;
 export const TICK_SECONDS = 1 / TICK_RATE;
 export const MAX_VERIFIED_TICKS = TICK_RATE * 60 * 10;
@@ -17,131 +17,70 @@ const TRAFFIC_HEIGHT = 84;
 const TRAFFIC_ROUTE_GAP = 24;
 const TRAFFIC_LANE_CHANGE_SPEED = 1.15;
 const TRAFFIC_LANE_CHANGE_CHANCE = 0.35;
+const LINE_RIDE_TOLERANCE = 14;
+const LINE_RIDE_GRACE_TICKS = Math.round(TICK_RATE * 0.55);
 const UINT32_RANGE = 0x1_0000_0000;
 
 export const TRAFFIC_COLORS = Object.freeze(["#ffc857", "#3dd6d0", "#a78bfa", "#ff7b72", "#f8f9fa"]);
 
-function normalizeSeed(seed) {
-  const normalized = Number(seed) >>> 0;
-  return normalized || 0x6d2b79f5;
-}
-
-function nextRandom(state) {
-  let value = state.rngState >>> 0;
-  value ^= value << 13;
-  value ^= value >>> 17;
-  value ^= value << 5;
-  state.rngState = value >>> 0;
-  return state.rngState / UINT32_RANGE;
-}
+function normalizeSeed(seed) { const normalized = Number(seed) >>> 0; return normalized || 0x6d2b79f5; }
+function nextRandom(state) { let value = state.rngState >>> 0; value ^= value << 13; value ^= value >>> 17; value ^= value << 5; state.rngState = value >>> 0; return state.rngState / UINT32_RANGE; }
 
 export function laneBounds(lane) {
   if (!Number.isInteger(lane) || lane < 0 || lane >= LANE_COUNT) throw new RangeError("Invalid lane");
   const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT;
-  return {
-    left: ROAD_LEFT + lane * laneWidth,
-    right: ROAD_LEFT + (lane + 1) * laneWidth
-  };
+  return { left: ROAD_LEFT + lane * laneWidth, right: ROAD_LEFT + (lane + 1) * laneWidth };
 }
+export function laneCenter(lane) { const bounds = laneBounds(lane); return (bounds.left + bounds.right) / 2; }
+export function clampVehicleToRoad(vehicle) { vehicle.x = Math.max(ROAD_LEFT, Math.min(vehicle.x, ROAD_RIGHT - vehicle.width)); return vehicle; }
+function trafficX(lane, carWidth) { const bounds = laneBounds(lane); return (bounds.left + bounds.right - carWidth) / 2; }
 
-export function laneCenter(lane) {
-  const bounds = laneBounds(lane);
-  return (bounds.left + bounds.right) / 2;
-}
-
-export function clampVehicleToRoad(vehicle) {
-  vehicle.x = Math.max(ROAD_LEFT, Math.min(vehicle.x, ROAD_RIGHT - vehicle.width));
-  return vehicle;
-}
-
-function trafficX(lane, carWidth) {
-  const bounds = laneBounds(lane);
-  return (bounds.left + bounds.right - carWidth) / 2;
+function playerIsRidingDivider(player) {
+  const center = player.x + player.width / 2;
+  const laneWidth = (ROAD_RIGHT - ROAD_LEFT) / LANE_COUNT;
+  for (let divider = 1; divider < LANE_COUNT; divider += 1) {
+    const dividerX = ROAD_LEFT + laneWidth * divider;
+    if (Math.abs(center - dividerX) <= LINE_RIDE_TOLERANCE) return true;
+  }
+  return false;
 }
 
 function wouldBlockRoad(state, candidate, ignoredCar = null) {
   const nearbyLanes = new Set([candidate.lane]);
   const safeVerticalGap = candidate.height + state.player.height + TRAFFIC_ROUTE_GAP;
-  for (const car of state.traffic) {
-    if (car === ignoredCar) continue;
-    if (Math.abs(car.y - candidate.y) < safeVerticalGap) nearbyLanes.add(car.lane);
-  }
+  for (const car of state.traffic) { if (car === ignoredCar) continue; if (Math.abs(car.y - candidate.y) < safeVerticalGap) nearbyLanes.add(car.lane); }
   return nearbyLanes.size === LANE_COUNT;
 }
 
 function spawnTraffic(state) {
-  const availableLanes = Array.from({ length: LANE_COUNT }, (_, lane) => lane).filter((lane) =>
-    state.traffic.every((car) => car.lane !== lane || car.y > 170)
-  );
+  const availableLanes = Array.from({ length: LANE_COUNT }, (_, lane) => lane).filter((lane) => state.traffic.every((car) => car.lane !== lane || car.y > 170));
   if (availableLanes.length === 0) return;
-
   let lane = availableLanes[0];
-  for (let offset = 0; offset < LANE_COUNT; offset += 1) {
-    const candidateLane = (state.spawnLaneCursor + offset) % LANE_COUNT;
-    if (availableLanes.includes(candidateLane)) {
-      lane = candidateLane;
-      break;
-    }
-  }
+  for (let offset = 0; offset < LANE_COUNT; offset += 1) { const candidateLane = (state.spawnLaneCursor + offset) % LANE_COUNT; if (availableLanes.includes(candidateLane)) { lane = candidateLane; break; } }
   state.spawnLaneCursor = (lane + 1) % LANE_COUNT;
-  const candidate = {
-    lane,
-    x: trafficX(lane, TRAFFIC_WIDTH),
-    y: -TRAFFIC_HEIGHT - 10,
-    width: TRAFFIC_WIDTH,
-    height: TRAFFIC_HEIGHT,
-    speedFactor: 0.88 + nextRandom(state) * 0.24,
-    colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length),
-    laneChangeDirection: nextRandom(state) < TRAFFIC_LANE_CHANGE_CHANCE
-      ? (lane === 0 ? 1 : lane === LANE_COUNT - 1 ? -1 : nextRandom(state) < 0.5 ? -1 : 1)
-      : 0,
-    laneChangeY: 70 + nextRandom(state) * 300,
-    laneChangeAttempted: false
-  };
-
+  const candidate = { lane, x: trafficX(lane, TRAFFIC_WIDTH), y: -TRAFFIC_HEIGHT - 10, width: TRAFFIC_WIDTH, height: TRAFFIC_HEIGHT, speedFactor: 0.88 + nextRandom(state) * 0.24, colorIndex: Math.floor(nextRandom(state) * TRAFFIC_COLORS.length), laneChangeDirection: nextRandom(state) < TRAFFIC_LANE_CHANGE_CHANCE ? (lane === 0 ? 1 : lane === LANE_COUNT - 1 ? -1 : nextRandom(state) < 0.5 ? -1 : 1) : 0, laneChangeY: 70 + nextRandom(state) * 300, laneChangeAttempted: false };
   if (!wouldBlockRoad(state, candidate)) state.traffic.push(candidate);
 }
 
 export function overlaps(a, b) {
-  const paddingX = 3;
-  const paddingY = 4;
-  return a.x + paddingX < b.x + b.width - paddingX &&
-    a.x + a.width - paddingX > b.x + paddingX &&
-    a.y + paddingY < b.y + b.height - paddingY &&
-    a.y + a.height - paddingY > b.y + paddingY;
+  const paddingX = 3, paddingY = 4;
+  return a.x + paddingX < b.x + b.width - paddingX && a.x + a.width - paddingX > b.x + paddingX && a.y + paddingY < b.y + b.height - paddingY && a.y + a.height - paddingY > b.y + paddingY;
 }
 
 export function createGameState(seed) {
   const normalizedSeed = normalizeSeed(seed);
-  return {
-    version: GAME_VERSION,
-    seed: normalizedSeed,
-    rngState: normalizedSeed,
-    tick: 0,
-    score: 0,
-    crashed: false,
-    capped: false,
-    roadOffset: 0,
-    spawnProgress: 0,
-    worldSpeed: 245,
-    spawnLaneCursor: normalizedSeed % LANE_COUNT,
-    traffic: [],
-    player: {
-      x: (GAME_WIDTH - PLAYER_WIDTH) / 2,
-      y: GAME_HEIGHT - 126,
-      width: PLAYER_WIDTH,
-      height: PLAYER_HEIGHT,
-      color: "#ff3d4f"
-    }
-  };
+  return { version: GAME_VERSION, seed: normalizedSeed, rngState: normalizedSeed, tick: 0, score: 0, crashed: false, capped: false, roadOffset: 0, spawnProgress: 0, worldSpeed: 245, spawnLaneCursor: normalizedSeed % LANE_COUNT, traffic: [], lineRideTicks: 0, player: { x: (GAME_WIDTH - PLAYER_WIDTH) / 2, y: GAME_HEIGHT - 126, width: PLAYER_WIDTH, height: PLAYER_HEIGHT, color: "#ff3d4f" } };
 }
 
 export function stepGame(state, direction = 0) {
   if (state.crashed || state.capped) return state;
   const safeDirection = direction === -1 || direction === 1 ? direction : 0;
-
   state.player.x += safeDirection * PLAYER_SPEED_PER_TICK;
   clampVehicleToRoad(state.player);
+
+  if (playerIsRidingDivider(state.player)) state.lineRideTicks += 1;
+  else state.lineRideTicks = 0;
+  if (state.lineRideTicks >= LINE_RIDE_GRACE_TICKS) { state.crashed = true; return state; }
 
   state.tick += 1;
   const elapsedSeconds = state.tick / TICK_RATE;
@@ -149,36 +88,23 @@ export function stepGame(state, direction = 0) {
   const spawnIntervalSeconds = Math.max(0.58, 1.25 - elapsedSeconds * 0.009);
   state.spawnProgress += TICK_SECONDS;
   state.roadOffset = (state.roadOffset + state.worldSpeed * TICK_SECONDS) % 100;
-
-  if (state.spawnProgress >= spawnIntervalSeconds) {
-    state.spawnProgress -= spawnIntervalSeconds;
-    spawnTraffic(state);
-  }
+  if (state.spawnProgress >= spawnIntervalSeconds) { state.spawnProgress -= spawnIntervalSeconds; spawnTraffic(state); }
 
   for (const car of state.traffic) {
-    const canStartLaneChange = !car.laneChangeAttempted &&
-      car.laneChangeDirection !== 0 && car.y >= car.laneChangeY;
+    const canStartLaneChange = !car.laneChangeAttempted && car.laneChangeDirection !== 0 && car.y >= car.laneChangeY;
     if (canStartLaneChange) {
       const targetLane = car.lane + car.laneChangeDirection;
       const candidate = { ...car, lane: targetLane };
-      const laneIsClear = !state.traffic.some((other) =>
-        other !== car && other.lane === targetLane && Math.abs(other.y - car.y) < 125
-      );
-      if (targetLane >= 0 && targetLane < LANE_COUNT && laneIsClear && !wouldBlockRoad(state, candidate, car)) {
-        car.lane = targetLane;
-      }
+      const laneIsClear = !state.traffic.some((other) => other !== car && other.lane === targetLane && Math.abs(other.y - car.y) < 125);
+      if (targetLane >= 0 && targetLane < LANE_COUNT && laneIsClear && !wouldBlockRoad(state, candidate, car)) car.lane = targetLane;
       car.laneChangeAttempted = true;
     }
     const bounds = laneBounds(car.lane);
     const targetX = (bounds.left + bounds.right - car.width) / 2;
     car.x += Math.max(-TRAFFIC_LANE_CHANGE_SPEED, Math.min(TRAFFIC_LANE_CHANGE_SPEED, targetX - car.x));
     car.y += state.worldSpeed * car.speedFactor * TICK_SECONDS;
-    if (overlaps(state.player, car)) {
-      state.crashed = true;
-      break;
-    }
+    if (overlaps(state.player, car)) { state.crashed = true; break; }
   }
-
   state.traffic = state.traffic.filter((car) => car.y < GAME_HEIGHT + car.height);
   state.score = Math.floor(elapsedSeconds * 10);
   if (state.tick >= MAX_VERIFIED_TICKS && !state.crashed) state.capped = true;
@@ -186,50 +112,18 @@ export function stepGame(state, direction = 0) {
 }
 
 export function validateReplayEvents(events, endTick) {
-  if (!Number.isInteger(endTick) || endTick < 1 || endTick > MAX_VERIFIED_TICKS) {
-    return { valid: false, error: "Invalid replay length" };
-  }
-  if (!Array.isArray(events) || events.length > 5000) {
-    return { valid: false, error: "Invalid replay events" };
-  }
-
+  if (!Number.isInteger(endTick) || endTick < 1 || endTick > MAX_VERIFIED_TICKS) return { valid: false, error: "Invalid replay length" };
+  if (!Array.isArray(events) || events.length > 5000) return { valid: false, error: "Invalid replay events" };
   let previousTick = -1;
-  for (const event of events) {
-    if (!event || typeof event !== "object" || Array.isArray(event)) return { valid: false, error: "Invalid replay event" };
-    if (!Number.isInteger(event.tick) || event.tick < 0 || event.tick >= endTick || event.tick <= previousTick) {
-      return { valid: false, error: "Replay events are out of order" };
-    }
-    if (![ -1, 0, 1 ].includes(event.direction)) return { valid: false, error: "Invalid replay direction" };
-    previousTick = event.tick;
-  }
+  for (const event of events) { if (!event || typeof event !== "object" || Array.isArray(event)) return { valid: false, error: "Invalid replay event" }; if (!Number.isInteger(event.tick) || event.tick < 0 || event.tick >= endTick || event.tick <= previousTick) return { valid: false, error: "Replay events are out of order" }; if (![-1, 0, 1].includes(event.direction)) return { valid: false, error: "Invalid replay direction" }; previousTick = event.tick; }
   return { valid: true };
 }
 
 export function replayGame(seed, events, endTick) {
-  const validation = validateReplayEvents(events, endTick);
-  if (!validation.valid) throw new Error(validation.error);
-
-  const state = createGameState(seed);
-  let eventIndex = 0;
-  let direction = 0;
-
-  while (state.tick < endTick && !state.crashed && !state.capped) {
-    while (eventIndex < events.length && events[eventIndex].tick === state.tick) {
-      direction = events[eventIndex].direction;
-      eventIndex += 1;
-    }
-    stepGame(state, direction);
-  }
-
+  const validation = validateReplayEvents(events, endTick); if (!validation.valid) throw new Error(validation.error);
+  const state = createGameState(seed); let eventIndex = 0, direction = 0;
+  while (state.tick < endTick && !state.crashed && !state.capped) { while (eventIndex < events.length && events[eventIndex].tick === state.tick) { direction = events[eventIndex].direction; eventIndex += 1; } stepGame(state, direction); }
   return state;
 }
 
-export function publicRunResult(state) {
-  return Object.freeze({
-    version: state.version,
-    tick: state.tick,
-    score: state.score,
-    crashed: state.crashed,
-    capped: state.capped
-  });
-}
+export function publicRunResult(state) { return Object.freeze({ version: state.version, tick: state.tick, score: state.score, crashed: state.crashed, capped: state.capped }); }
