@@ -3,41 +3,201 @@
   font-size: 1.05rem;
 }
 
-.continue-price strong { color: #58e88b; font-size: 1.25em; }
-.pass-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; margin: 0.65rem 0; }
-.pass-button, #usePassButton, .continue-payment-button { border: 2px solid #58e88b; border-radius: 0.65rem; background: #10271a; color: #fff; padding: 0.75rem; cursor: pointer; }
-.pass-button[aria-pressed="true"] { border-color: #fff4a8; background: #1f4b2f; box-shadow: 0 0 0 2px rgb(255 244 168 / 25%); }
-.pass-button strong, .pass-button span { display: block; }
-.pass-button span { margin-top: 0.2rem; color: #b9f8cb; font-size: 0.78rem; }
-.continue-payment-button { width: 100%; margin-bottom: 0.65rem; font-weight: 900; }
-.active-pass { color: #b9f8cb; font-weight: 800; }
-.legal-links { margin: 0 auto 0.75rem !important; max-width: 25rem; color: #c4cdd2; font-size: 0.72rem; line-height: 1.4; }
-.legal-links a, .site-footer a { color: #b9f8cb; }
-.payment-note { max-width: 24rem; margin: 0 auto 0.9rem !important; color: #c4cdd2; font-size: 0.78rem; line-height: 1.45; }
-.payment-status { min-height: 1.2em; margin: 0 0 0.7rem !important; color: #fff4a8; font-size: 0.78rem; }
-.crash-actions { display: grid; gap: 0.55rem; }
-#usePassButton, .secondary-button { border: 0; border-radius: 0.55rem; padding: 0.8rem 1.2rem; font-weight: 900; cursor: pointer; }
-#usePassButton { background: #58e88b; color: #06150b; }
-.pass-button:disabled, #usePassButton:disabled, .continue-payment-button:disabled { cursor: wait; opacity: 0.65; }
-.secondary-button { border: 1px solid #60717b; background: #1c252a; color: #fff; }
-.pass-button:focus-visible, #usePassButton:focus-visible, .continue-payment-button:focus-visible, .secondary-button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
-.age-dialog { width: min(calc(100% - 2rem), 30rem); border: 1px solid #60717b; border-radius: 0.9rem; padding: 0; background: #10181d; color: #fff; box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 70%); max-height: calc(100svh - 2rem); overflow-y: auto; }
-.age-dialog::backdrop { background: rgb(0 0 0 / 78%); backdrop-filter: blur(4px); }
-.age-dialog-card { padding: 1.35rem; }
-.age-dialog h2 { margin: 0 0 0.75rem; }
-.age-dialog p:not(.eyebrow) { color: #c4cdd2; line-height: 1.5; }
-.selected-pass-summary { color: #b9f8cb !important; font-weight: 800; }
-.age-dialog-actions { display: grid; gap: 0.65rem; margin-top: 1rem; }
-#confirmAdultButton { border: 0; border-radius: 0.55rem; padding: 0.8rem 1.2rem; background: #58e88b; color: #06150b; font-weight: 900; cursor: pointer; }
-.site-footer { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.85rem; padding: 0.8rem 1rem 1.2rem; font-size: 0.78rem; }
+.continue-price strong {
+  color: #58e88b;
+  font-size: 1.25em;
+}
 
-/* iOS Safari changes the dynamic viewport while Razorpay Checkout is open.
-   Keep the underlying game on the stable viewport so it does not visibly shrink. */
+.pass-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0.65rem 0;
+}
+
+.pass-button,
+#usePassButton,
+.continue-payment-button {
+  border: 2px solid #58e88b;
+  border-radius: 0.65rem;
+  background: #10271a;
+  color: #fff;
+  padding: 0.75rem;
+  cursor: pointer;
+}
+
+.pass-button[aria-pressed="true"] {
+  border-color: #fff4a8;
+  background: #1f4b2f;
+  box-shadow: 0 0 0 2px rgb(255 244 168 / 25%);
+}
+
+.pass-button strong,
+.pass-button span {
+  display: block;
+}
+
+.pass-button span {
+  margin-top: 0.2rem;
+  color: #b9f8cb;
+  font-size: 0.78rem;
+}
+
+.continue-payment-button {
+  width: 100%;
+  margin-bottom: 0.65rem;
+  font-weight: 900;
+}
+
+.active-pass {
+  color: #b9f8cb;
+  font-weight: 800;
+}
+
+.legal-links {
+  margin: 0 auto 0.75rem !important;
+  max-width: 25rem;
+  color: #c4cdd2;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.legal-links a,
+.site-footer a {
+  color: #b9f8cb;
+}
+
+.payment-note {
+  max-width: 24rem;
+  margin: 0 auto 0.9rem !important;
+  color: #c4cdd2;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.payment-status {
+  min-height: 1.2em;
+  margin: 0 0 0.7rem !important;
+  color: #fff4a8;
+  font-size: 0.78rem;
+}
+
+.crash-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+#usePassButton,
+.secondary-button {
+  border: 0;
+  border-radius: 0.55rem;
+  padding: 0.8rem 1.2rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+#usePassButton {
+  background: #58e88b;
+  color: #06150b;
+}
+
+.pass-button:disabled,
+#usePassButton:disabled,
+.continue-payment-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.secondary-button {
+  border: 1px solid #60717b;
+  background: #1c252a;
+  color: #fff;
+}
+
+.pass-button:focus-visible,
+#usePassButton:focus-visible,
+.continue-payment-button:focus-visible,
+.secondary-button:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+.age-dialog {
+  width: min(calc(100% - 2rem), 30rem);
+  border: 1px solid #60717b;
+  border-radius: 0.9rem;
+  padding: 0;
+  background: #10181d;
+  color: #fff;
+  box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 70%);
+  max-height: calc(100svh - 2rem);
+  overflow-y: auto;
+}
+
+.age-dialog::backdrop {
+  background: rgb(0 0 0 / 78%);
+  backdrop-filter: blur(4px);
+}
+
+.age-dialog-card {
+  padding: 1.35rem;
+}
+
+.age-dialog h2 {
+  margin: 0 0 0.75rem;
+}
+
+.age-dialog p:not(.eyebrow) {
+  color: #c4cdd2;
+  line-height: 1.5;
+}
+
+.selected-pass-summary {
+  color: #b9f8cb !important;
+  font-weight: 800;
+}
+
+.age-dialog-actions {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+#confirmAdultButton {
+  border: 0;
+  border-radius: 0.55rem;
+  padding: 0.8rem 1.2rem;
+  background: #58e88b;
+  color: #06150b;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.85rem;
+  padding: 0.8rem 1rem 1.2rem;
+  font-size: 0.78rem;
+}
+
+/* Razorpay Checkout can change Safari's dynamic visual viewport. Keep the
+   underlying game shell on the stable viewport so it does not visibly shrink. */
 @supports (height: 100svh) {
-  body.game-page .game-shell { height: 100svh; min-height: 100svh; }
+  body.game-page .game-shell {
+    height: 100svh;
+    min-height: 100svh;
+  }
 }
 
 @media (max-width: 420px) {
-  .scoreboard { gap: 0.25rem; }
-  .scoreboard p { min-width: 3.75rem; padding-inline: 0.35rem; }
+  .scoreboard {
+    gap: 0.25rem;
+  }
+
+  .scoreboard p {
+    min-width: 3.75rem;
+    padding-inline: 0.35rem;
+  }
 }
