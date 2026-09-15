@@ -1,0 +1,1 @@
+Engine sound: `f1_rpm_step_2.wav`, served from the public clhforensics/indygp repository. Source lineage: OpenGameArt “racing car engine sound loops” by domasx2, CC0/public domain: https://opengameart.org/content/racing-car-engine-sound-loops
