@@ -1,0 +1,9 @@
+/* Keep the game shell tied to the stable mobile viewport. Razorpay Checkout can
+   change Safari's visual viewport while its payment sheet is open; using dvh
+   here would make the game underneath visibly contract/expand. */
+@supports (height: 100svh) {
+  body.game-page .game-shell {
+    height: 100svh;
+    min-height: 100svh;
+  }
+}
